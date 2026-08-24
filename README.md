@@ -7,7 +7,7 @@
 
 ## 🌐 Live URLs
 
-- **Live Application (Frontend)**: [Vercel](https://doc-summary-assistant-3mocayppb-isha-gandhi.vercel.app)
+- **Live Application (Frontend)**: [Vercel](https://doc-summary-assistant-smoky.vercel.app/)
 - **API Health Check (Backend)**: [Render/api/health](https://doc-summary-assistant-k00l.onrender.com/api/health)
 - **API Interactive Docs (Swagger)**: [Swagger/docs](https://doc-summary-assistant-k00l.onrender.com/docs)
 

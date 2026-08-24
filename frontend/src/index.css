@@ -3,7 +3,11 @@
 @tailwind utilities;
 
 @layer base {
-  :root {
+  :root,
+  :root.dark,
+  html.dark,
+  .dark,
+  [data-theme="dark"] {
     --bg: #111113;
     --ink: #f8f7f4;
     --accent: #ff4d00;
@@ -14,9 +18,14 @@
     --surface-card: #18181b;
     --surface-subtle: rgba(255, 255, 255, 0.03);
     --grid-dot: rgba(255, 255, 255, 0.035);
+    color-scheme: dark;
   }
 
-  .light, [data-theme="light"] {
+  :root.light,
+  html.light,
+  html:not(.dark),
+  .light,
+  [data-theme="light"] {
     --bg: #f8f7f4;
     --ink: #111113;
     --accent: #ff4d00;
@@ -27,6 +36,7 @@
     --surface-card: #ffffff;
     --surface-subtle: rgba(0, 0, 0, 0.03);
     --grid-dot: rgba(0, 0, 0, 0.04);
+    color-scheme: light;
   }
 
   body {
