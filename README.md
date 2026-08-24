@@ -1,27 +1,28 @@
 # Document Summary Assistant
 
-> An intelligent, full-stack web application that extracts text from PDFs and scanned images via native document parsing and Tesseract OCR, generating executive summaries and numbered key takeaways using Groq's high-speed LLaMA 3.3 LLM.
-
+> Document Summary Assistant solves information overload by transforming dense PDFs and unindexed scanned images into structured, executive-level takeaways in seconds. To balance speed, precision, and architectural simplicity, paired a React (Vite) and Tailwind CSS frontend with an asynchronous FastAPI backend.
+> The text extraction pipeline implements intelligent branching: digital PDFs are parsed directly with pdfplumber, while scanned images undergo PIL grayscale preprocessing before character recognition via Tesseract OCR. For summarization, Groq’s ultra-fast LLaMA 3.3 70B inference engine was selected for its near-instant token generation on free-tier limits.
+> Strict time budgeting guided deliberate scoping decisions: authentication, user databases, and multi-file batching were intentionally deferred in favor of a rock-solid single-document pipeline. Client-side file size (upto 10MB) and MIME-type gating prevent wasteful network roundtrips, while the backend is fully containerized with Docker for deterministic deployment across Render and Vercel.
 ---
 
 ## 🌐 Live URLs
 
-- **Live Application (Frontend)**: `https://your-app-name.vercel.app` *(Replace with your Vercel deployment URL)*
+- **Live Application (Frontend)**: `https://doc-summary-assistant-3mocayppb-isha-gandhi.vercel.app`
 - **API Health Check (Backend)**: `https://doc-summary-assistant-k00l.onrender.com/api/health`
 - **API Interactive Docs (Swagger)**: `https://doc-summary-assistant-k00l.onrender.com/docs`
 
 ---
-
+<!--
 ## 📸 Application Preview
 
-<!-- Add your application screenshot or demo GIF here -->
+Add your application screenshot or demo GIF here 
 ```markdown
 ![Document Summary Assistant Screenshot](./docs/screenshot.png)
 ```
 > *Tip: To add a preview image, place a screenshot or GIF in a `docs/` folder or drag it directly into a GitHub issue/release to generate a permanent CDN link, then update the image tag above.*
 
 ---
-
+-->
 ## 🛠️ Tech Stack & Justifications
 
 | Layer | Technology | Justification |
