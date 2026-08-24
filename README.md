@@ -1,8 +1,9 @@
 # Document Summary Assistant
 
 > Document Summary Assistant solves information overload by transforming dense PDFs and unindexed scanned images into structured, executive-level takeaways in seconds. To balance speed, precision, and architectural simplicity, paired a React (Vite) and Tailwind CSS frontend with an asynchronous FastAPI backend.
-> The text extraction pipeline implements intelligent branching: digital PDFs are parsed directly with pdfplumber, while scanned images undergo PIL grayscale preprocessing before character recognition via Tesseract OCR. For summarization, Groq’s ultra-fast LLaMA 3.3 70B inference engine was selected for its near-instant token generation on free-tier limits.
-> Strict time budgeting guided deliberate scoping decisions: authentication, user databases, and multi-file batching were intentionally deferred in favor of a rock-solid single-document pipeline. Client-side file size (upto 10MB) and MIME-type gating prevent wasteful network roundtrips, while the backend is fully containerized with Docker for deterministic deployment across Render and Vercel.
+> The text extraction pipeline implements intelligent branching: digital PDFs are parsed directly with pdfplumber, while scanned images undergo PIL and OpenCV preprocessing (Lanczos upscaling, Otsu/adaptive binarization, median denoising, and minAreaRect deskewing) before character recognition via Tesseract OCR. For summarization, Groq’s ultra-fast LLaMA 3.3 70B inference engine was selected for its near-instant token generation on free-tier limits.
+> Strict time budgeting guided deliberate scoping decisions: authentication, user databases, and multi-file batching were intentionally deferred in favor of a rock-solid single-document pipeline. Client-side file size (up to 10MB) and MIME-type gating prevent wasteful network roundtrips, while the backend is fully containerized with Docker for deterministic deployment across Render and Vercel.
+
 ---
 
 ## 🌐 Live URLs
@@ -12,17 +13,29 @@
 - **API Interactive Docs (Swagger)**: [Swagger/docs](https://doc-summary-assistant-k00l.onrender.com/docs)
 
 ---
-<!--
-## 📸 Application Preview
 
-Add your application screenshot or demo GIF here 
-```markdown
-![Document Summary Assistant Screenshot](./docs/screenshot.png)
-```
-> *Tip: To add a preview image, place a screenshot or GIF in a `docs/` folder or drag it directly into a GitHub issue/release to generate a permanent CDN link, then update the image tag above.*
+## 🚀 Enhancements Beyond Core Requirements
+
+1. **Real-Time Streaming Progress (Server-Sent Events)**:
+   - Added `/api/summarize-stream` delivering live pipeline events (`validating` ➔ `extracting` ➔ `extracted` with real word count ➔ `classifying` ➔ `summarizing` ➔ `complete`).
+   - Frontend dynamically updates progress labels, word count metrics, and animation states with automatic fallback to standard REST endpoints.
+
+2. **Document-Type-Aware Summarization Prompts**:
+   - Automated heuristic document classification into `academic/research`, `business/report`, `legal/contract`, and `general/other`.
+   - Domain-specific system prompts dynamically calibrate LLM attention (e.g. focusing on empirical methodology for academic papers vs. financial metrics & operational KPIs for business reports vs. liabilities & covenants for legal contracts).
+
+3. **In-Memory Cache for Duplicate Uploads**:
+   - SHA-256 process-local caching mechanism keyed by document hash and summary length.
+   - Eliminates redundant OCR computing and preserves Groq token quotas on repeated runs with instant response delivery (`cached: true`).
+
+4. **Rate Limiting Protection**:
+   - In-memory sliding-window rate limiter on summarization endpoints (10 requests/min per IP) to guard against API quota exhaustion and denial-of-service spikes.
+
+5. **Multi-Format Export & Print Actions**:
+   - Instant client-side download options for `.txt` (structured plaintext ledger) and `.md` (Markdown document with metadata tags), alongside print-optimized stylesheet triggers.
 
 ---
--->
+
 ## 🛠️ Tech Stack & Justifications
 
 | Layer | Technology | Justification |
@@ -32,10 +45,10 @@ Add your application screenshot or demo GIF here
 | **Drag & Drop** | **react-dropzone** | Accessible, intuitive file dropzone with instantaneous client-side validation for file size and MIME types. |
 | **Icons** | **Lucide React** | Crisp, lightweight, tree-shakeable SVG icons for document types, loaders, and status alerts. |
 | **Backend Framework** | **FastAPI (Python 3.11)** | High-performance asynchronous API framework with automatic OpenAPI/Swagger documentation and strong Pydantic validation. |
-| **PDF Extraction** | **pdfplumber** | Precise character and layout extraction for digital text-based PDF documents without heavy overhead. |
-| **Image OCR** | **pytesseract + Pillow** | Industry-standard optical character recognition with grayscale image preprocessing for scanned documents and screenshots. |
+| **PDF Extraction** | **pdfplumber + pdf2image** | Precise character and layout extraction for digital text-based PDF documents with automatic OCR fallback for scanned PDFs. |
+| **Image OCR & Vision** | **pytesseract + OpenCV + Pillow** | Multi-stage image enhancement pipeline (grayscale, Lanczos upscaling, adaptive binarization, deskewing) feeding Tesseract OCR. |
 | **AI Summarization** | **Groq API (LLaMA 3.3 70B)** | Ultra-low latency inference delivering structured summaries and bullet points in under two seconds on a free tier. |
-| **Deployment** | **Render (Docker) + Vercel** | Containerized backend guaranteeing Tesseract system package availability, paired with edge-deployed React static hosting. |
+| **Deployment** | **Render (Docker) + Vercel** | Containerized backend guaranteeing Tesseract and Poppler system package availability, paired with edge-deployed React static hosting. |
 
 ---
 
@@ -47,31 +60,33 @@ Add your application screenshot or demo GIF here
        ▼
 [ React Frontend ] ── (Client Validation: Size & MIME Type)
        │
-       │  (2) POST /api/summarize (multipart/form-data)
+       │  (2) POST /api/summarize-stream (multipart/form-data with SSE)
        ▼
-[ FastAPI Backend ]
+[ FastAPI Backend ] ── (In-Memory Cache Check & IP Rate Limiting)
        │
-       ├─► [ PDF Document ] ────► pdfplumber text extraction
+       ├─► [ PDF Document ] ────► pdfplumber text extraction (pdf2image fallback)
        │
-       └─► [ Scanned Image ] ───► Pillow Grayscale Preprocessing ──► Tesseract OCR
+       └─► [ Scanned Image ] ───► OpenCV Preprocessing (Upscale, Binarize, Deskew) ──► Tesseract OCR
        │
        ▼
 [ Extracted Text ] ── (Validate extracted text > 0 words; 422 if unreadable)
        │
-       │  (3) JSON Prompt with Length Preset (Short / Medium / Long)
+       ├─► Heuristic Document Classifier (Academic / Business / Legal / General)
+       │
+       │  (3) Type-Aware JSON Prompt with Length Preset (Short / Medium / Long)
        ▼
 [ Groq AI (LLaMA 3.3 70B Versatile) ]
        │
-       │  (4) Structured JSON Response { summary, key_points }
+       │  (4) Structured JSON Response { summary, key_points, document_type }
        ▼
-[ React Frontend ] ── (5) Interactive Executive Summary + Bulleted Takeaways + Copy Action
+[ React Frontend ] ── (5) Real-Time SSE Updates ➔ Executive Summary Card ➔ Export (.TXT / .MD / Print)
 ```
 
 1. **Upload & Validate**: Users drag & drop a PDF, PNG, or JPEG file (up to 10MB) and select a summary length (`short`, `medium`, or `long`).
-2. **Text Extraction Pipeline**: The backend detects the MIME type. Digital PDFs are parsed directly with `pdfplumber`; image scans are preprocessed with PIL and extracted via `Tesseract OCR`.
-3. **Empty Text Guard**: If no readable text is detected, the API immediately halts with `422 Unprocessable Entity` and displays guidance.
-4. **AI Generation**: Valid text is formatted and sent to Groq's `llama-3.3-70b-versatile` model, returning a structured summary paragraph and key bullet points.
-5. **Display & Action**: The UI renders a formatted summary card with word counts, copy-to-clipboard actions, and a one-click reset flow.
+2. **Text Extraction Pipeline**: The backend detects the MIME type. Digital PDFs are parsed directly with `pdfplumber`; scanned images and textless PDFs undergo OpenCV preprocessing before character extraction via `Tesseract OCR`.
+3. **Document Classification**: The extracted text is classified into domain archetypes to calibrate the prompt focus.
+4. **AI Generation**: Structured prompts are dispatched to Groq's `llama-3.3-70b-versatile` model, returning formatted summary text and key points.
+5. **Streaming & Export**: Progress events stream in real-time to the browser, rendering the completed executive brief with one-click export actions (.txt, .md, print).
 
 ---
 
@@ -80,9 +95,9 @@ Add your application screenshot or demo GIF here
 ### Prerequisites
 - **Node.js**: v18+ and `npm`
 - **Python**: v3.9+ and `pip`
-- **Tesseract OCR Engine**:
-  - **macOS**: `brew install tesseract`
-  - **Ubuntu / Debian**: `sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-eng`
+- **Tesseract OCR Engine & Poppler**:
+  - **macOS**: `brew install tesseract poppler`
+  - **Ubuntu / Debian**: `sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-eng poppler-utils`
   - **Windows**: Install via UB-Mannheim installer and add to System PATH.
 
 ---

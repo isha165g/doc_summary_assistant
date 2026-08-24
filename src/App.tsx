@@ -4,7 +4,6 @@ import {
   ArrowRight,
   Sun,
   Moon,
-  Feather,
   CheckCircle2,
   AlertCircle,
 } from 'lucide-react';
@@ -13,12 +12,13 @@ import { LengthSelector } from './components/LengthSelector';
 import { LoadingState } from './components/LoadingState';
 import { SummaryResult } from './components/SummaryResult';
 import { ErrorBanner } from './components/ErrorBanner';
-import { SummaryResponse, SummaryLength, AppError } from './types';
+import { SummaryResponse, SummaryLength, AppError, StreamProgress } from './types';
 
 export default function App() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [summaryLength, setSummaryLength] = useState<SummaryLength>('medium');
   const [isSummarizing, setIsSummarizing] = useState<boolean>(false);
+  const [streamProgress, setStreamProgress] = useState<StreamProgress | null>(null);
   const [summaryResult, setSummaryResult] = useState<SummaryResponse | null>(null);
   const [uploadError, setUploadError] = useState<AppError | null>(null);
 
@@ -65,15 +65,17 @@ export default function App() {
     setSelectedFile(null);
     setSummaryResult(null);
     setUploadError(null);
+    setStreamProgress(null);
     setIsSummarizing(false);
   };
 
+  // 1. STREAMING SSE HANDLER with SYNC FALLBACK
   const handleSummarize = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedFile) {
       setUploadError({
         status: 400,
-        title: 'No Manuscript Selected',
+        title: 'No Document Selected',
         message: 'Please provide a PDF document or scanned image to begin summarization.',
       });
       return;
@@ -82,21 +84,124 @@ export default function App() {
     setIsSummarizing(true);
     setUploadError(null);
     setSummaryResult(null);
+    setStreamProgress({
+      stage: 'validating',
+      message: `Uploading ${selectedFile.name}...`,
+    });
 
     const formData = new FormData();
     formData.append('file', selectedFile);
     formData.append('length', summaryLength);
 
-    const endpointsToTry: string[] = [];
+    const streamEndpoints: string[] = [];
     if (apiUrl) {
-      endpointsToTry.push(`${apiUrl.replace(/\/$/, '')}/api/summarize`);
+      streamEndpoints.push(`${apiUrl.replace(/\/$/, '')}/api/summarize-stream`);
     }
-    endpointsToTry.push('/api/summarize');
+    streamEndpoints.push('/api/summarize-stream');
+
+    const syncEndpoints: string[] = [];
+    if (apiUrl) {
+      syncEndpoints.push(`${apiUrl.replace(/\/$/, '')}/api/summarize`);
+    }
+    syncEndpoints.push('/api/summarize');
+
+    let streamCompleted = false;
+
+    // Try Streaming First
+    for (const endpoint of streamEndpoints) {
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (response.status === 429) {
+          const errJson = await response.json().catch(() => null);
+          setUploadError({
+            status: 429,
+            title: 'Rate Limit Reached',
+            message: errJson?.detail || 'Too many requests. Please wait a moment before trying again.',
+          });
+          setIsSummarizing(false);
+          return;
+        }
+
+        if (response.status === 413) {
+          setUploadError({
+            status: 413,
+            title: 'File Too Large',
+            message: 'File size exceeds maximum allowed size of 10 MB.',
+          });
+          setIsSummarizing(false);
+          return;
+        }
+
+        if (response.ok && response.body) {
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (trimmed.startsWith('data:')) {
+                try {
+                  const eventData = JSON.parse(trimmed.slice(5).trim());
+
+                  if (eventData.stage === 'error') {
+                    setUploadError({
+                      status: eventData.status || 500,
+                      message: eventData.message || 'Processing error occurred.',
+                    });
+                    setIsSummarizing(false);
+                    return;
+                  }
+
+                  if (eventData.stage === 'complete' && eventData.result) {
+                    setSummaryResult(eventData.result);
+                    streamCompleted = true;
+                    setIsSummarizing(false);
+                    return;
+                  }
+
+                  // Live progress stage update
+                  setStreamProgress({
+                    stage: eventData.stage,
+                    message: eventData.message,
+                    word_count: eventData.word_count,
+                    document_type: eventData.document_type,
+                  });
+                } catch {
+                  // Non-JSON or comment line
+                }
+              }
+            }
+          }
+
+          if (streamCompleted) return;
+        }
+      } catch (err: any) {
+        console.warn('Streaming endpoint attempt failed, attempting fallback:', err);
+      }
+    }
+
+    // Fallback to Standard Synchronous Endpoint
+    setStreamProgress({
+      stage: 'summarizing',
+      message: 'Processing document via fallback pipeline...',
+    });
 
     let responseData: SummaryResponse | null = null;
     let lastError: AppError | null = null;
 
-    for (const endpoint of endpointsToTry) {
+    for (const endpoint of syncEndpoints) {
       try {
         const response = await fetch(endpoint, {
           method: 'POST',
@@ -111,7 +216,10 @@ export default function App() {
             data?.message ||
             `Server returned HTTP ${response.status}`;
 
-          if (response.status === 502) {
+          if (response.status === 429) {
+            errorMessage =
+              data?.detail || "Rate limit reached (10 requests per minute). Please wait a moment.";
+          } else if (response.status === 502) {
             errorMessage =
               "Could not generate a summary right now. Please verify service availability and try again.";
           } else if (response.status === 422) {
@@ -240,8 +348,8 @@ export default function App() {
             )}
 
             {isSummarizing ? (
-              /* Loading Component */
-              <LoadingState filename={selectedFile?.name} />
+              /* Loading Component with SSE Progress */
+              <LoadingState filename={selectedFile?.name} progress={streamProgress} />
             ) : (
               /* Form */
               <form onSubmit={handleSummarize} className="space-y-6">
@@ -318,4 +426,3 @@ export default function App() {
     </div>
   );
 }
-

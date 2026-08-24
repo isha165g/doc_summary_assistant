@@ -1,5 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { Loader2, FileSearch, BrainCircuit, Sparkles } from 'lucide-react';
+import {
+  Loader2,
+  FileSearch,
+  BrainCircuit,
+  Sparkles,
+  Zap,
+  Tag,
+} from 'lucide-react';
 
 const STATUS_STEPS = [
   {
@@ -15,6 +22,12 @@ const STATUS_STEPS = [
     icon: Loader2,
   },
   {
+    code: 'SYS_CLASSIFY_DOC',
+    message: 'Classifying document archetype...',
+    subtext: 'Tailoring extraction & analysis parameters',
+    icon: Tag,
+  },
+  {
     code: 'LLM_SUMMARIZE_GROQ',
     message: 'Generating document summary...',
     subtext: 'Summarizing core points and key takeaways via LLaMA 3.3',
@@ -28,26 +41,51 @@ const STATUS_STEPS = [
   },
 ];
 
-export const LoadingState = ({ filename }) => {
+export const LoadingState = ({ filename, progress }) => {
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentStepIndex((prev) => (prev + 1) % STATUS_STEPS.length);
-    }, 2400);
-
-    return () => clearInterval(timer);
-  }, []);
+    if (!progress) {
+      const timer = setInterval(() => {
+        setCurrentStepIndex((prev) => (prev + 1) % STATUS_STEPS.length);
+      }, 2200);
+      return () => clearInterval(timer);
+    } else {
+      switch (progress.stage) {
+        case 'validating':
+          setCurrentStepIndex(0);
+          break;
+        case 'extracting':
+          setCurrentStepIndex(1);
+          break;
+        case 'extracted':
+        case 'classifying':
+          setCurrentStepIndex(2);
+          break;
+        case 'summarizing':
+          setCurrentStepIndex(3);
+          break;
+        case 'cached':
+        case 'complete':
+          setCurrentStepIndex(4);
+          break;
+      }
+    }
+  }, [progress]);
 
   const activeStep = STATUS_STEPS[currentStepIndex];
-  const StepIcon = activeStep.icon;
+  const StepIcon = progress?.stage === 'cached' ? Zap : activeStep.icon;
+
+  const displayMessage = progress?.message || activeStep.message;
+  const displayCode = progress?.stage
+    ? `STREAM_${progress.stage.toUpperCase()}`
+    : activeStep.code;
 
   return (
     <div
       id="loading-state-card"
       className="p-6 sm:p-8 bg-[var(--surface-card)] rounded border border-[var(--accent)] shadow-sm space-y-6 animate-fadeIn w-full"
     >
-      {/* Animated Icon and Message */}
       <div className="flex flex-col items-center text-center space-y-3">
         <div className="relative">
           <div className="w-12 h-12 rounded border border-[var(--accent)] bg-[var(--accent-subtle)] flex items-center justify-center text-[var(--accent)]">
@@ -63,23 +101,33 @@ export const LoadingState = ({ filename }) => {
           </span>
         </div>
 
-        <div className="space-y-1.5">
-          <span className="label-meta">{activeStep.code}</span>
+        <div className="space-y-1.5 max-w-lg">
+          <span className="label-meta inline-flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)] animate-pulse" />
+            {displayCode}
+          </span>
           <h3 className="text-base font-bold font-display uppercase tracking-wide text-[var(--ink)]">
-            {activeStep.message}
+            {displayMessage}
           </h3>
-          <p className="text-xs text-[var(--ink-muted)] max-w-sm">
-            {activeStep.subtext}
-          </p>
+
+          {progress?.word_count ? (
+            <p className="text-xs text-[var(--accent)] font-mono-code font-semibold">
+              [ {progress.word_count.toLocaleString()} WORDS EXTRACTED &bull; PIPELINE ACTIVE ]
+            </p>
+          ) : (
+            <p className="text-xs text-[var(--ink-muted)] max-w-sm mx-auto">
+              {activeStep.subtext}
+            </p>
+          )}
+
           {filename && (
-            <p className="text-[11px] font-mono-code text-[var(--ink-muted)] pt-1">
+            <p className="text-[11px] font-mono-code text-[var(--ink-muted)] pt-1 truncate">
               TARGET: <span className="text-[var(--accent)] font-medium">{filename}</span>
             </p>
           )}
         </div>
       </div>
 
-      {/* Step Indicators */}
       <div className="flex items-center justify-center gap-2 pt-1">
         {STATUS_STEPS.map((_, idx) => (
           <div
@@ -95,7 +143,6 @@ export const LoadingState = ({ filename }) => {
         ))}
       </div>
 
-      {/* Content Skeleton Placeholder */}
       <div className="space-y-2.5 pt-2 border-t border-[var(--ink-faint)]">
         <div className="h-3 bg-[var(--ink-faint)] rounded w-3/4 animate-pulse" />
         <div className="h-3 bg-[var(--ink-faint)] rounded w-full animate-pulse" />
@@ -104,6 +151,3 @@ export const LoadingState = ({ filename }) => {
     </div>
   );
 };
-
-export default LoadingState;
-

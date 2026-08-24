@@ -1,5 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { Loader2, FileSearch, BrainCircuit, Sparkles } from 'lucide-react';
+import {
+  Loader2,
+  FileSearch,
+  BrainCircuit,
+  Sparkles,
+  FileText,
+  Zap,
+  Tag,
+} from 'lucide-react';
+import { StreamProgress } from '../types';
 
 const STATUS_STEPS = [
   {
@@ -13,6 +22,12 @@ const STATUS_STEPS = [
     message: 'Extracting text layer & running OCR engine...',
     subtext: 'Resolving character matrices and bitmap channels',
     icon: Loader2,
+  },
+  {
+    code: 'SYS_CLASSIFY_DOC',
+    message: 'Classifying document archetype...',
+    subtext: 'Tailoring extraction & analysis parameters',
+    icon: Tag,
   },
   {
     code: 'LLM_SUMMARIZE_GROQ',
@@ -30,21 +45,50 @@ const STATUS_STEPS = [
 
 interface LoadingStateProps {
   filename?: string;
+  progress?: StreamProgress | null;
 }
 
-export const LoadingState: React.FC<LoadingStateProps> = ({ filename }) => {
+export const LoadingState: React.FC<LoadingStateProps> = ({ filename, progress }) => {
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentStepIndex((prev) => (prev + 1) % STATUS_STEPS.length);
-    }, 2400);
-
-    return () => clearInterval(timer);
-  }, []);
+    // If we don't have real SSE progress, cycle periodically
+    if (!progress) {
+      const timer = setInterval(() => {
+        setCurrentStepIndex((prev) => (prev + 1) % STATUS_STEPS.length);
+      }, 2200);
+      return () => clearInterval(timer);
+    } else {
+      // Map SSE stage to step index
+      switch (progress.stage) {
+        case 'validating':
+          setCurrentStepIndex(0);
+          break;
+        case 'extracting':
+          setCurrentStepIndex(1);
+          break;
+        case 'extracted':
+        case 'classifying':
+          setCurrentStepIndex(2);
+          break;
+        case 'summarizing':
+          setCurrentStepIndex(3);
+          break;
+        case 'cached':
+        case 'complete':
+          setCurrentStepIndex(4);
+          break;
+      }
+    }
+  }, [progress]);
 
   const activeStep = STATUS_STEPS[currentStepIndex];
-  const StepIcon = activeStep.icon;
+  const StepIcon = progress?.stage === 'cached' ? Zap : activeStep.icon;
+
+  const displayMessage = progress?.message || activeStep.message;
+  const displayCode = progress?.stage
+    ? `STREAM_${progress.stage.toUpperCase()}`
+    : activeStep.code;
 
   return (
     <div
@@ -67,16 +111,27 @@ export const LoadingState: React.FC<LoadingStateProps> = ({ filename }) => {
           </span>
         </div>
 
-        <div className="space-y-1.5">
-          <span className="label-meta">{activeStep.code}</span>
+        <div className="space-y-1.5 max-w-lg">
+          <span className="label-meta inline-flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)] animate-pulse" />
+            {displayCode}
+          </span>
           <h3 className="text-base font-bold font-display uppercase tracking-wide text-[var(--ink)]">
-            {activeStep.message}
+            {displayMessage}
           </h3>
-          <p className="text-xs text-[var(--ink-muted)] max-w-sm">
-            {activeStep.subtext}
-          </p>
+
+          {progress?.word_count ? (
+            <p className="text-xs text-[var(--accent)] font-mono-code font-semibold">
+              [ {progress.word_count.toLocaleString()} WORDS EXTRACTED &bull; PIPELINE ACTIVE ]
+            </p>
+          ) : (
+            <p className="text-xs text-[var(--ink-muted)] max-w-sm mx-auto">
+              {activeStep.subtext}
+            </p>
+          )}
+
           {filename && (
-            <p className="text-[11px] font-mono-code text-[var(--ink-muted)] pt-1">
+            <p className="text-[11px] font-mono-code text-[var(--ink-muted)] pt-1 truncate">
               TARGET: <span className="text-[var(--accent)] font-medium">{filename}</span>
             </p>
           )}
@@ -108,5 +163,3 @@ export const LoadingState: React.FC<LoadingStateProps> = ({ filename }) => {
     </div>
   );
 };
-
-

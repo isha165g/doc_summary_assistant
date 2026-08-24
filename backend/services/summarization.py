@@ -1,7 +1,7 @@
 """
-Summarization service for Document Summary Assistant (Phase 4).
+Summarization service for Document Summary Assistant (Phase 4 & Stretch Enhancements).
 Uses Groq API (with dynamic model discovery and failover)
-to produce structured summaries and key takeaways from extracted document text.
+to produce structured summaries, key takeaways, and document-type-aware analysis.
 """
 
 import json
@@ -9,7 +9,7 @@ import logging
 import os
 import re
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Literal
 from dotenv import load_dotenv
 from groq import Groq, APIConnectionError, APIStatusError, RateLimitError
 
@@ -38,10 +38,75 @@ LENGTH_INSTRUCTIONS = {
     "long": "Provide a comprehensive, detailed summary in exactly 8 to 10 sentences.",
 }
 
+# Document Types supported
+DocumentType = Literal["academic/research", "business/report", "legal/contract", "general/other"]
+
+# Tailored instructions per document category
+DOCUMENT_TYPE_PROMPTS = {
+    "academic/research": (
+        "Focus on research objectives, experimental methodology, key empirical findings, and broader conclusions or limitations. "
+        "Highlight significant quantitative metrics, hypotheses tested, and theoretical contributions."
+    ),
+    "business/report": (
+        "Focus on core business metrics, strategic decisions, financial indicators, operational performance, and actionable next steps. "
+        "Highlight KPIs, market drivers, risks, and managerial implications."
+    ),
+    "legal/contract": (
+        "Focus on contractual parties, core rights and binding obligations, critical dates, governing terms, and liability limits. "
+        "Highlight risk factors, non-standard covenants, and termination clauses."
+    ),
+    "general/other": (
+        "Provide a balanced, objective overview capturing the primary subject, central arguments, and practical takeaways. "
+        "Highlight main insights and noteworthy facts."
+    ),
+}
+
 
 class SummarizationError(Exception):
     """Raised when document summarization fails due to API errors, missing keys, or malformed responses."""
     pass
+
+
+def classify_document_type(text: str) -> DocumentType:
+    """
+    Lightweight heuristic classifier to determine document type based on structural markers,
+    specialized terminology, and keyword frequencies.
+    """
+    if not text:
+        return "general/other"
+
+    sample = text[:4000].lower()
+
+    # Keyword sets
+    legal_keywords = [
+        "agreement", "contract", "parties", "herein", "pursuant to", "jurisdiction",
+        "indemnif", "confidentiality", "governing law", "clause", "statute", "plaintiff",
+        "defendant", "court", "witnesseth", "arbitration", "liability", "breach", "covenant"
+    ]
+    academic_keywords = [
+        "abstract", "introduction", "methodology", "methods", "references", "doi:",
+        "hypothesis", "et al.", "experiment", "participants", "dataset", "literature review",
+        "findings", "statistically significant", "p <", "p-value", "journal", "proceedings"
+    ]
+    business_keywords = [
+        "revenue", "quarter", "q1", "q2", "q3", "q4", "fiscal year", "ebitda", "kpi",
+        "stakeholders", "executive summary", "market share", "operating margin", "roi",
+        "forecast", "strategic initiative", "growth rate", "guidance", "balance sheet"
+    ]
+
+    scores = {
+        "legal/contract": sum(2 if kw in ["herein", "pursuant to", "witnesseth", "indemnif"] else 1 for kw in legal_keywords if kw in sample),
+        "academic/research": sum(2 if kw in ["abstract", "doi:", "et al.", "methodology"] else 1 for kw in academic_keywords if kw in sample),
+        "business/report": sum(2 if kw in ["ebitda", "fiscal year", "executive summary", "kpi"] else 1 for kw in business_keywords if kw in sample),
+    }
+
+    best_type, best_score = max(scores.items(), key=lambda x: x[1])
+
+    # Threshold for confident classification
+    if best_score >= 2:
+        return best_type  # type: ignore
+
+    return "general/other"
 
 
 def _get_groq_client() -> Groq:
@@ -89,7 +154,7 @@ def _clean_and_parse_json(raw_text: str) -> Dict[str, Any]:
     return data
 
 
-def _generate_extractive_fallback(text: str, length: str) -> Dict[str, Any]:
+def _generate_extractive_fallback(text: str, length: str, doc_type: str = "general/other") -> Dict[str, Any]:
     """
     Fallback extractive summary if external AI models are experiencing downtime or rate limits.
     """
@@ -109,24 +174,32 @@ def _generate_extractive_fallback(text: str, length: str) -> Dict[str, Any]:
     if not key_points:
         key_points = [
             f"Extracted content ({len(text.split())} words).",
+            f"Document classified as {doc_type.replace('/', ' ')}.",
             "Key details processed from document text.",
         ]
         
-    return {"summary": summary, "key_points": key_points}
+    return {"summary": summary, "key_points": key_points, "document_type": doc_type}
 
 
-def summarize_text(text: str, length: str = "medium") -> Dict[str, Any]:
+def summarize_text(
+    text: str,
+    length: str = "medium",
+    explicit_doc_type: str | None = None
+) -> Dict[str, Any]:
     """
-    Summarizes extracted document text using Groq with dynamic model discovery and failover.
+    Summarizes extracted document text using Groq with document-type-aware prompts,
+    dynamic model discovery, and failover.
 
     Args:
         text: Raw extracted document text.
         length: Desired summary length ('short', 'medium', or 'long').
+        explicit_doc_type: Optional override for document type classification.
 
     Returns:
         Dict containing:
             - summary: str
             - key_points: list[str] (3-5 bullet points)
+            - document_type: str ('academic/research', 'business/report', 'legal/contract', 'general/other')
 
     Raises:
         SummarizationError: If text is empty.
@@ -139,6 +212,10 @@ def summarize_text(text: str, length: str = "medium") -> Dict[str, Any]:
         normalized_length = "medium"
 
     length_guideline = LENGTH_INSTRUCTIONS[normalized_length]
+
+    # Document Type Classification
+    doc_type = explicit_doc_type or classify_document_type(text)
+    type_guideline = DOCUMENT_TYPE_PROMPTS.get(doc_type, DOCUMENT_TYPE_PROMPTS["general/other"])
 
     # Handle text exceeding context threshold (~12,000 characters)
     is_truncated = False
@@ -156,8 +233,10 @@ def summarize_text(text: str, length: str = "medium") -> Dict[str, Any]:
 
     system_prompt = (
         "You are an expert document summarization assistant. "
-        "Your task is to analyze the provided document text and output an objective, accurate summary "
-        "and 3 to 5 key takeaway points.\n\n"
+        f"You have analyzed this document and identified it as '{doc_type}'.\n\n"
+        "Your task is to analyze the provided text and output an objective, high-signal summary "
+        "and 3 to 5 key takeaway points tailored specifically for this document archetype.\n\n"
+        f"Type-Specific Focus: {type_guideline}\n\n"
         "Rules:\n"
         f"1. {length_guideline}\n"
         "2. Generate between 3 and 5 distinct, concise key takeaway points in the 'key_points' array.\n"
@@ -165,7 +244,8 @@ def summarize_text(text: str, length: str = "medium") -> Dict[str, Any]:
         "Required JSON schema:\n"
         "{\n"
         '  "summary": "string containing summary text",\n'
-        '  "key_points": ["takeaway 1", "takeaway 2", "takeaway 3"]\n'
+        '  "key_points": ["takeaway 1", "takeaway 2", "takeaway 3"],\n'
+        f'  "document_type": "{doc_type}"\n'
         "}"
     )
 
@@ -193,7 +273,7 @@ def summarize_text(text: str, length: str = "medium") -> Dict[str, Any]:
             logger.warning("Groq dynamic models.list query failed: %s", list_err)
 
         for model_name in candidate_models:
-            logger.info("Attempting summarization with Groq model: %s", model_name)
+            logger.info("Attempting summarization with Groq model: %s (type=%s)", model_name, doc_type)
             for attempt in range(2):
                 try:
                     response = client.chat.completions.create(
@@ -208,6 +288,7 @@ def summarize_text(text: str, length: str = "medium") -> Dict[str, Any]:
                         continue
                     parsed = _clean_and_parse_json(raw_content)
                     if parsed.get("summary") and parsed.get("key_points"):
+                        parsed["document_type"] = parsed.get("document_type") or doc_type
                         return parsed
                 except (APIConnectionError, RateLimitError, APIStatusError) as api_err:
                     logger.warning("Groq model %s attempt %d failed: %s", model_name, attempt + 1, api_err)
@@ -225,4 +306,4 @@ def summarize_text(text: str, length: str = "medium") -> Dict[str, Any]:
 
     # Return reliable extractive fallback if all external models are unreachable
     logger.info("Generating fallback extractive summary.")
-    return _generate_extractive_fallback(text, normalized_length)
+    return _generate_extractive_fallback(text, normalized_length, doc_type)

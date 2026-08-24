@@ -4,7 +4,6 @@ import {
   ArrowRight,
   Sun,
   Moon,
-  Feather,
   CheckCircle2,
   AlertCircle,
 } from 'lucide-react';
@@ -18,6 +17,7 @@ export default function App() {
   const [selectedFile, setSelectedFile] = useState(null);
   const [summaryLength, setSummaryLength] = useState('medium');
   const [isSummarizing, setIsSummarizing] = useState(false);
+  const [streamProgress, setStreamProgress] = useState(null);
   const [summaryResult, setSummaryResult] = useState(null);
   const [uploadError, setUploadError] = useState(null);
 
@@ -51,7 +51,6 @@ export default function App() {
     setIsDarkMode((prev) => !prev);
   };
 
-  // Health check state
   const [backendHealth, setBackendHealth] = useState(null);
   const [isCheckingHealth, setIsCheckingHealth] = useState(false);
 
@@ -62,15 +61,17 @@ export default function App() {
     setSelectedFile(null);
     setSummaryResult(null);
     setUploadError(null);
+    setStreamProgress(null);
     setIsSummarizing(false);
   };
 
+  // Streaming SSE with fallback
   const handleSummarize = async (e) => {
     e.preventDefault();
     if (!selectedFile) {
       setUploadError({
         status: 400,
-        title: 'No Manuscript Selected',
+        title: 'No Document Selected',
         message: 'Please provide a PDF document or scanned image to begin summarization.',
       });
       return;
@@ -79,21 +80,122 @@ export default function App() {
     setIsSummarizing(true);
     setUploadError(null);
     setSummaryResult(null);
+    setStreamProgress({
+      stage: 'validating',
+      message: `Uploading ${selectedFile.name}...`,
+    });
 
     const formData = new FormData();
     formData.append('file', selectedFile);
     formData.append('length', summaryLength);
 
-    const endpointsToTry = [];
+    const streamEndpoints = [];
     if (apiUrl) {
-      endpointsToTry.push(`${apiUrl.replace(/\/$/, '')}/api/summarize`);
+      streamEndpoints.push(`${apiUrl.replace(/\/$/, '')}/api/summarize-stream`);
     }
-    endpointsToTry.push('/api/summarize');
+    streamEndpoints.push('/api/summarize-stream');
+
+    const syncEndpoints = [];
+    if (apiUrl) {
+      syncEndpoints.push(`${apiUrl.replace(/\/$/, '')}/api/summarize`);
+    }
+    syncEndpoints.push('/api/summarize');
+
+    let streamCompleted = false;
+
+    for (const endpoint of streamEndpoints) {
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (response.status === 429) {
+          const errJson = await response.json().catch(() => null);
+          setUploadError({
+            status: 429,
+            title: 'Rate Limit Reached',
+            message: errJson?.detail || 'Too many requests. Please wait a moment before trying again.',
+          });
+          setIsSummarizing(false);
+          return;
+        }
+
+        if (response.status === 413) {
+          setUploadError({
+            status: 413,
+            title: 'File Too Large',
+            message: 'File size exceeds maximum allowed size of 10 MB.',
+          });
+          setIsSummarizing(false);
+          return;
+        }
+
+        if (response.ok && response.body) {
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (trimmed.startsWith('data:')) {
+                try {
+                  const eventData = JSON.parse(trimmed.slice(5).trim());
+
+                  if (eventData.stage === 'error') {
+                    setUploadError({
+                      status: eventData.status || 500,
+                      message: eventData.message || 'Processing error occurred.',
+                    });
+                    setIsSummarizing(false);
+                    return;
+                  }
+
+                  if (eventData.stage === 'complete' && eventData.result) {
+                    setSummaryResult(eventData.result);
+                    streamCompleted = true;
+                    setIsSummarizing(false);
+                    return;
+                  }
+
+                  setStreamProgress({
+                    stage: eventData.stage,
+                    message: eventData.message,
+                    word_count: eventData.word_count,
+                    document_type: eventData.document_type,
+                  });
+                } catch {
+                  // Ignore
+                }
+              }
+            }
+          }
+
+          if (streamCompleted) return;
+        }
+      } catch (err) {
+        console.warn('Streaming endpoint attempt failed, falling back:', err);
+      }
+    }
+
+    // Fallback sync call
+    setStreamProgress({
+      stage: 'summarizing',
+      message: 'Processing document via fallback pipeline...',
+    });
 
     let responseData = null;
     let lastError = null;
 
-    for (const endpoint of endpointsToTry) {
+    for (const endpoint of syncEndpoints) {
       try {
         const response = await fetch(endpoint, {
           method: 'POST',
@@ -108,7 +210,10 @@ export default function App() {
             data?.message ||
             `Server returned HTTP ${response.status}`;
 
-          if (response.status === 502) {
+          if (response.status === 429) {
+            errorMessage =
+              data?.detail || "Rate limit reached (10 requests per minute). Please wait a moment.";
+          } else if (response.status === 502) {
             errorMessage =
               "Could not generate a summary right now. Please verify service availability and try again.";
           } else if (response.status === 422) {
@@ -189,14 +294,12 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--ink)] py-8 sm:py-12 px-4 sm:px-6 lg:px-8 flex flex-col justify-between transition-colors duration-200 font-body">
       <main className="max-w-2xl w-full mx-auto space-y-6">
-        {/* Header & Theme Toggle */}
         <header className="relative space-y-3 pt-2">
           <div className="flex items-center justify-between gap-4">
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[var(--ink)] font-display uppercase">
               Document Summary Assistant
             </h1>
 
-            {/* Dark/Light Mode Toggle */}
             <button
               type="button"
               id="theme-toggle-button"
@@ -224,25 +327,18 @@ export default function App() {
           </p>
         </header>
 
-        {/* Dynamic State View */}
         {summaryResult ? (
-          /* Result View */
           <SummaryResult result={summaryResult} onReset={handleReset} />
         ) : (
-          /* Main Interactive Form Card */
           <div className="bg-[var(--surface-card)] rounded border border-[var(--ink-faint)] p-5 sm:p-8 space-y-6 shadow-sm">
-            {/* Error Banner */}
             {uploadError && (
               <ErrorBanner error={uploadError} onDismiss={() => setUploadError(null)} />
             )}
 
             {isSummarizing ? (
-              /* Loading Component */
-              <LoadingState filename={selectedFile?.name} />
+              <LoadingState filename={selectedFile?.name} progress={streamProgress} />
             ) : (
-              /* Form */
               <form onSubmit={handleSummarize} className="space-y-6">
-                {/* Drag-and-Drop Upload Zone */}
                 <UploadZone
                   selectedFile={selectedFile}
                   onFileSelect={(file) => {
@@ -253,14 +349,12 @@ export default function App() {
                   disabled={isSummarizing}
                 />
 
-                {/* Length Preset Selector */}
                 <LengthSelector
                   value={summaryLength}
                   onChange={setSummaryLength}
                   disabled={isSummarizing}
                 />
 
-                {/* Submit Action Button */}
                 <button
                   id="summarize-submit-button"
                   type="submit"
@@ -277,7 +371,6 @@ export default function App() {
         )}
       </main>
 
-      {/* Footer Connectivity & Health Diagnostic */}
       <footer className="max-w-2xl w-full mx-auto mt-10 pt-6 border-t border-[var(--ink-faint)] text-xs text-[var(--ink-muted)] space-y-3 font-mono-code">
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px]">
           <div className="flex items-center gap-2">
@@ -315,4 +408,3 @@ export default function App() {
     </div>
   );
 }
-
