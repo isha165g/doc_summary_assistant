@@ -1,6 +1,7 @@
 """
 Extraction service for Document Summary Assistant (Phase 3).
-Handles text extraction from PDF documents (pdfplumber) and Image OCR (pytesseract + Pillow).
+Handles hybrid text extraction from PDF documents (pdfplumber + OCR for scanned pages/embedded images)
+and Image OCR (pytesseract + Pillow with preprocessing).
 
 System Dependency Note:
 Tesseract OCR must be installed on the host operating system in addition to the Python package:
@@ -12,7 +13,7 @@ macOS (Homebrew):
 
 import io
 import logging
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 import pdfplumber
 import pytesseract
 
@@ -29,13 +30,35 @@ class NoTextFoundError(ExtractionError):
     pass
 
 
+def perform_ocr_on_pil_image(image: Image.Image) -> str:
+    """
+    Helper function to run OCR on a PIL Image with grayscale preprocessing.
+    """
+    try:
+        # Convert to grayscale to enhance OCR contrast
+        gray = image.convert("L")
+        # Auto-contrast to make faint scanned text darker and clearer
+        enhanced = ImageOps.autocontrast(gray)
+        ocr_text = pytesseract.image_to_string(enhanced)
+        return ocr_text.strip() if ocr_text else ""
+    except pytesseract.TesseractNotFoundError as t_err:
+        logger.error("Tesseract OCR binary not found on system: %s", t_err)
+        raise ExtractionError("Tesseract OCR engine is not installed on the server.") from t_err
+    except Exception as err:
+        logger.warning("OCR pass failed on image: %s", err)
+        return ""
+
+
 def extract_pdf_text(file_bytes: bytes) -> str:
     """
-    Extract text page-by-page from a PDF document using pdfplumber,
-    preserving paragraph breaks between pages with double newlines.
+    Extract text page-by-page from a PDF document using a hybrid approach:
+    1. Extracts digital selectable text layer with pdfplumber.
+    2. If a page has little/no digital text or contains embedded images/scans,
+       renders the page or embedded images to run Tesseract OCR.
+    3. Merges digital text with OCR text cleanly to avoid losing mixed content.
 
     Raises:
-        NoTextFoundError: If the PDF contains no readable text layer (e.g. scanned image-only PDF).
+        NoTextFoundError: If no readable digital or OCR text could be found across the PDF.
         ExtractionError: If the PDF is corrupted or unreadable.
     """
     try:
@@ -45,23 +68,53 @@ def extract_pdf_text(file_bytes: bytes) -> str:
                 raise NoTextFoundError("The PDF document contains no pages.")
 
             for page_num, page in enumerate(pdf.pages, start=1):
+                page_extracted_parts: list[str] = []
+
+                # 1. Digital text layer
                 try:
-                    text = page.extract_text()
-                    if text and text.strip():
-                        page_texts.append(text.strip())
-                except Exception as page_err:
-                    logger.warning("Error extracting text from PDF page %d: %s", page_num, page_err)
+                    digital_text = page.extract_text()
+                    if digital_text and digital_text.strip():
+                        page_extracted_parts.append(digital_text.strip())
+                except Exception as text_err:
+                    logger.warning("Error extracting digital text on PDF page %d: %s", page_num, text_err)
+                    digital_text = ""
+
+                # 2. Check if page needs OCR (scanned page or embedded images)
+                has_digital_text = bool(digital_text and len(digital_text.strip().split()) > 15)
+                has_images = bool(getattr(page, "images", None))
+
+                # If the page has few/no digital words, or has images, run OCR pass
+                if not has_digital_text or has_images:
+                    try:
+                        # Render page as image (resolution 150-200 DPI is optimal for OCR)
+                        page_img = page.to_image(resolution=150)
+                        if page_img and hasattr(page_img, "original"):
+                            ocr_result = perform_ocr_on_pil_image(page_img.original)
+                            if ocr_result:
+                                # Avoid duplicating text if OCR is mostly identical to digital text
+                                if not digital_text:
+                                    page_extracted_parts.append(ocr_result)
+                                elif ocr_result not in digital_text and len(ocr_result) > len(digital_text) * 0.5:
+                                    # If OCR found substantial text not present digitally (e.g. text in an embedded graphic)
+                                    page_extracted_parts.append(f"[Scanned/Image Text]:\n{ocr_result}")
+                    except Exception as ocr_page_err:
+                        logger.debug("Page image rendering for OCR skipped/failed on page %d: %s", page_num, ocr_page_err)
+
+                if page_extracted_parts:
+                    page_texts.append("\n\n".join(page_extracted_parts))
 
         joined_text = "\n\n".join(page_texts).strip()
 
         if not joined_text:
             raise NoTextFoundError(
-                "No readable text found in this PDF. It may be a scanned document without a text layer."
+                "No readable text found in this PDF. Both digital text extraction and OCR found no readable content."
             )
 
         return joined_text
 
     except NoTextFoundError:
+        raise
+    except ExtractionError:
         raise
     except Exception as exc:
         logger.error("Failed to parse PDF document: %s", exc, exc_info=True)
@@ -71,7 +124,7 @@ def extract_pdf_text(file_bytes: bytes) -> str:
 def extract_image_text(file_bytes: bytes) -> str:
     """
     Extract text from an image (JPEG/PNG) using Pillow and Tesseract OCR.
-    Applies grayscale preprocessing to enhance OCR accuracy.
+    Applies grayscale and auto-contrast preprocessing to enhance OCR accuracy.
 
     Raises:
         NoTextFoundError: If no text was recognized in the image.
@@ -83,23 +136,12 @@ def extract_image_text(file_bytes: bytes) -> str:
         except UnidentifiedImageError as img_err:
             raise ExtractionError("Invalid or corrupted image format.") from img_err
 
-        # Preprocessing: Convert image to grayscale to improve OCR clarity on scanned documents
-        grayscale_image = image.convert("L")
-
-        try:
-            raw_text = pytesseract.image_to_string(grayscale_image)
-        except pytesseract.TesseractNotFoundError as t_err:
-            logger.error("Tesseract OCR binary not found on system: %s", t_err)
-            raise ExtractionError("Tesseract OCR engine is not installed on the server.") from t_err
-        except Exception as ocr_err:
-            logger.error("Tesseract OCR processing failed: %s", ocr_err, exc_info=True)
-            raise ExtractionError(f"OCR processing error: {ocr_err}") from ocr_err
-
-        cleaned_text = raw_text.strip() if raw_text else ""
+        # Preprocessing: Convert image to grayscale + auto-contrast
+        cleaned_text = perform_ocr_on_pil_image(image)
 
         if not cleaned_text:
             raise NoTextFoundError(
-                "No readable text found in this image. Please ensure the image is clear and contains text."
+                "No readable text found in this image. Please ensure the image is clear and contains readable text."
             )
 
         return cleaned_text

@@ -3,6 +3,8 @@ import path from "path";
 import multer from "multer";
 import { createServer as createViteServer } from "vite";
 import { PDFParse } from "pdf-parse";
+import Tesseract from "tesseract.js";
+import sharp from "sharp";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -11,16 +13,66 @@ const upload = multer({
   },
 });
 
+/**
+ * Runs Tesseract OCR on an image buffer with grayscale and normalization preprocessing.
+ */
+async function runOcrOnImageBuffer(imageBuffer: Buffer): Promise<string> {
+  try {
+    let processedBuffer = imageBuffer;
+    try {
+      processedBuffer = await sharp(imageBuffer)
+        .grayscale()
+        .normalize()
+        .toBuffer();
+    } catch (sharpErr) {
+      console.warn("Sharp preprocessing skipped/failed, using raw buffer:", sharpErr);
+    }
+
+    const { data } = await Tesseract.recognize(processedBuffer, "eng");
+    return (data?.text || "").trim();
+  } catch (err) {
+    console.error("Tesseract OCR recognition error:", err);
+    return "";
+  }
+}
+
+/**
+ * Scans PDF binary buffer for embedded JPEG image streams to OCR scanned documents.
+ */
+function extractJpegStreamsFromPdf(buffer: Buffer): Buffer[] {
+  const images: Buffer[] = [];
+  let startIndex = 0;
+  while (startIndex < buffer.length && images.length < 8) {
+    const soi = buffer.indexOf(Buffer.from([0xff, 0xd8, 0xff]), startIndex);
+    if (soi === -1) break;
+    const eoi = buffer.indexOf(Buffer.from([0xff, 0xd9]), soi + 3);
+    if (eoi === -1) break;
+    const imgBuf = buffer.subarray(soi, eoi + 2);
+    // Only process images with reasonable resolution (> 2KB)
+    if (imgBuf.length > 2048) {
+      images.push(imgBuf);
+    }
+    startIndex = eoi + 2;
+  }
+  return images;
+}
+
+/**
+ * Hybrid PDF Text Extraction:
+ * Extracts digital selectable text, plus runs OCR on embedded image streams or scanned pages.
+ */
 async function extractPdfText(buffer: Buffer): Promise<string> {
+  const extractedParts: string[] = [];
+
+  // 1. Digital text layer
+  let digitalText = "";
   try {
     const parser = new PDFParse({ data: buffer });
     const textResult = await parser.getText();
-    const text = (textResult?.text || "").trim();
+    digitalText = (textResult?.text || "").trim();
     await parser.destroy();
-    return text;
   } catch (err) {
-    console.warn("PDFParse structured extraction failed, trying fallback stream parsing:", err);
-    // Basic fallback parsing for simple text streams in PDFs
+    console.warn("PDFParse structured extraction error, attempting fallback stream parsing:", err);
     const raw = buffer.toString("latin1");
     const streamRegex = /stream[\r\n]+([\s\S]*?)[\r\n]+endstream/g;
     let match;
@@ -35,8 +87,34 @@ async function extractPdfText(buffer: Buffer): Promise<string> {
         }
       }
     }
-    return chunks.join(" ").trim();
+    digitalText = chunks.join(" ").trim();
   }
+
+  if (digitalText) {
+    extractedParts.push(digitalText);
+  }
+
+  // 2. OCR pass for embedded images or scanned pages in PDF
+  const embeddedImages = extractJpegStreamsFromPdf(buffer);
+  if (embeddedImages.length > 0) {
+    console.log(`[PDF Hybrid Extraction] Found ${embeddedImages.length} embedded images in PDF. Running OCR...`);
+    for (let i = 0; i < embeddedImages.length; i++) {
+      try {
+        const ocrText = await runOcrOnImageBuffer(embeddedImages[i]);
+        if (ocrText && ocrText.length > 10) {
+          // If digital text didn't contain this text, append it
+          const firstSnippet = ocrText.slice(0, 30);
+          if (!digitalText.includes(firstSnippet)) {
+            extractedParts.push(ocrText);
+          }
+        }
+      } catch (ocrErr) {
+        console.warn(`OCR failed for embedded image #${i}:`, ocrErr);
+      }
+    }
+  }
+
+  return extractedParts.join("\n\n").trim();
 }
 
 async function startServer() {
@@ -50,7 +128,7 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
-  // POST /api/summarize endpoint (Phase 3: Text Extraction & OCR)
+  // POST /api/summarize endpoint (Phase 3: Hybrid Text Extraction & OCR)
   app.post("/api/summarize", (req, res) => {
     upload.single("file")(req, res, async (err) => {
       if (err) {
@@ -109,7 +187,7 @@ async function startServer() {
         let extractedText = "";
 
         if (detectedType === "pdf") {
-          console.log(`[Extraction Pipeline] Extracting text from PDF: '${file.originalname}' (${file.size} bytes)`);
+          console.log(`[Extraction Pipeline] Extracting text & scanned content from PDF: '${file.originalname}' (${file.size} bytes)`);
           try {
             extractedText = await extractPdfText(file.buffer);
           } catch (pdfErr: any) {
@@ -119,12 +197,8 @@ async function startServer() {
             });
           }
         } else {
-          console.log(`[Extraction Pipeline] Processing image OCR for: '${file.originalname}' (${file.size} bytes)`);
-          // Extract test doc text or embedded metadata if present
-          const rawBufferStr = file.buffer.toString("utf-8", 0, Math.min(file.buffer.length, 500));
-          if (rawBufferStr.includes("TEST_DOC_TEXT:")) {
-            extractedText = rawBufferStr.split("TEST_DOC_TEXT:")[1].trim();
-          }
+          console.log(`[Extraction Pipeline] Running Tesseract OCR on image: '${file.originalname}' (${file.size} bytes)`);
+          extractedText = await runOcrOnImageBuffer(file.buffer);
         }
 
         // If no text was found or whitespace only, return 422
