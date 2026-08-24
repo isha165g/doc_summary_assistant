@@ -6,10 +6,7 @@ import {
   Check,
   RotateCcw,
   Sparkles,
-  CheckCircle2,
-  FileCheck2,
   BookOpen,
-  ListOrdered,
 } from 'lucide-react';
 import { SummaryResponse } from '../types';
 
@@ -31,7 +28,6 @@ export const SummaryResult: React.FC<SummaryResultProps> = ({ result, onReset })
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Fallback for older browsers or restricted frames
       const textarea = document.createElement('textarea');
       textarea.value = result.summary;
       document.body.appendChild(textarea);
@@ -48,95 +44,90 @@ export const SummaryResult: React.FC<SummaryResultProps> = ({ result, onReset })
   return (
     <div
       id="summary-result-card"
-      className="bg-white rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden animate-fadeIn space-y-6 p-6 sm:p-8"
+      className="bg-[var(--surface-card)] rounded border border-[var(--ink-faint)] shadow-sm overflow-hidden animate-fadeIn space-y-6 p-6 sm:p-8 w-full"
     >
-      {/* Top Metadata Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-100">
-        <div className="flex items-center gap-3 min-w-0">
-          <div
-            className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm ${
-              isPdf
-                ? 'bg-red-50 text-red-600 border border-red-200/80'
-                : 'bg-blue-50 text-blue-600 border border-blue-200/80'
-            }`}
-          >
+      {/* Top Manuscript Docket Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-[var(--ink-faint)]">
+        <div className="flex items-center gap-3.5 min-w-0">
+          <div className="w-10 h-10 rounded border border-[var(--accent)] bg-[var(--accent-subtle)] flex items-center justify-center flex-shrink-0 text-[var(--accent)]">
             {isPdf ? <FileText className="w-5 h-5" /> : <ImageIcon className="w-5 h-5" />}
           </div>
           <div className="min-w-0">
-            <h2 className="text-base font-bold text-slate-900 truncate tracking-tight">
+            <span className="label-meta block">03 / DOCUMENT SUMMARY</span>
+            <h2 className="text-base sm:text-lg font-bold font-display uppercase tracking-tight text-[var(--ink)] truncate">
               {result.filename}
             </h2>
-            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 mt-0.5 font-medium">
-              <span className="capitalize">{isPdf ? 'PDF Document' : 'Image Scan'}</span>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--ink-muted)] mt-1 font-mono-code">
+              <span>{isPdf ? 'PDF DOCUMENT' : 'SCANNED IMAGE'}</span>
               <span>&bull;</span>
-              <span className="font-mono text-indigo-600 font-semibold">{result.word_count} words extracted</span>
+              <span className="text-[var(--accent)] font-semibold">
+                {result.word_count} WORDS PARSED
+              </span>
               <span>&bull;</span>
-              <span className="capitalize px-2 py-0.5 rounded-full text-[11px] bg-slate-100 text-slate-700 font-semibold border border-slate-200">
-                {result.length} length
+              <span className="uppercase px-1.5 py-0.5 rounded border border-[var(--ink-faint)] text-[var(--ink)]">
+                {result.length} BRIEF
               </span>
             </div>
           </div>
         </div>
 
-        {/* Action Buttons: Copy & Reset */}
+        {/* Action Button: Copy */}
         <div className="flex items-center gap-2 flex-shrink-0">
           <button
             type="button"
             id="copy-summary-button"
             onClick={handleCopySummary}
-            className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold border transition-all duration-200 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+            className={`inline-flex items-center gap-1.5 px-3 py-2 rounded text-xs font-mono-code uppercase font-semibold border transition-all duration-200 focus:outline-none focus:ring-1 focus:ring-[var(--accent)] min-h-[38px] ${
               copied
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
-                : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 hover:border-slate-300'
+                ? 'bg-[var(--accent-subtle)] text-[var(--accent)] border-[var(--accent)]'
+                : 'bg-transparent hover:bg-[var(--surface-subtle)] text-[var(--ink)] border-[var(--ink-faint)] hover:border-[var(--ink-muted)]'
             }`}
-            title="Copy summary & key points to clipboard"
+            title="Copy summary & key points"
           >
             {copied ? (
               <>
-                <Check className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Copied!</span>
+                <Check className="w-3.5 h-3.5 text-[var(--accent)]" />
+                <span>[ COPIED_TO_CLIPBOARD ]</span>
               </>
             ) : (
               <>
-                <Copy className="w-3.5 h-3.5 text-slate-500" />
-                <span>Copy Summary</span>
+                <Copy className="w-3.5 h-3.5 text-[var(--ink-muted)]" />
+                <span>[ COPY_TEXT ]</span>
               </>
             )}
           </button>
         </div>
       </div>
 
-      {/* Summary Section */}
+      {/* Executive Summary Section */}
       <div className="space-y-2.5">
-        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-600">
-          <BookOpen className="w-4 h-4 text-indigo-600" />
-          <span>Executive Summary</span>
+        <div className="flex items-center gap-2">
+          <span className="label-meta">EXECUTIVE SUMMARY</span>
         </div>
         <div
           id="summary-content-block"
-          className="p-5 bg-gradient-to-br from-slate-50 to-indigo-50/20 rounded-xl border border-slate-200/80 text-slate-800 text-sm leading-relaxed text-justify sm:text-left"
+          className="p-5 sm:p-6 bg-[var(--surface-subtle)] rounded border-l-4 border-l-[var(--accent)] border-y border-r border-[var(--ink-faint)]"
         >
-          <p className="whitespace-pre-line font-normal">{result.summary}</p>
+          <p className="text-sm sm:text-base leading-relaxed text-[var(--ink)] whitespace-pre-line font-body">
+            {result.summary}
+          </p>
         </div>
       </div>
 
-      {/* Key Points Section */}
+      {/* Key Takeaways Section */}
       {result.key_points && result.key_points.length > 0 && (
         <div className="space-y-3">
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-600">
-            <Sparkles className="w-4 h-4 text-amber-500" />
-            <span>Key Takeaways</span>
-          </div>
+          <span className="label-meta">KEY TAKEAWAYS</span>
           <div className="grid grid-cols-1 gap-2.5">
             {result.key_points.map((point, index) => (
               <div
                 key={index}
-                className="flex items-start gap-3 p-3.5 bg-slate-50/80 hover:bg-indigo-50/30 rounded-xl border border-slate-200/70 transition-colors"
+                className="flex items-start gap-3.5 p-3.5 sm:p-4 bg-[var(--surface-card)] rounded border border-[var(--ink-faint)] transition-colors hover:border-[var(--accent)] group"
               >
-                <div className="mt-0.5 flex-shrink-0 w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[11px] font-bold">
-                  {index + 1}
+                <div className="mt-0.5 flex-shrink-0 font-mono-code text-xs font-bold text-[var(--accent)]">
+                  [{String(index + 1).padStart(2, '0')}]
                 </div>
-                <p className="text-xs sm:text-sm text-slate-700 leading-relaxed font-normal">
+                <p className="text-xs sm:text-sm text-[var(--ink)] leading-relaxed font-body">
                   {point}
                 </p>
               </div>
@@ -146,22 +137,24 @@ export const SummaryResult: React.FC<SummaryResultProps> = ({ result, onReset })
       )}
 
       {/* Footer / Reset Action */}
-      <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-100 font-medium">
-          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
-          <span>Extraction & AI Summary complete</span>
+      <div className="pt-4 border-t border-[var(--ink-faint)] flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        <div className="inline-flex items-center gap-2 font-mono-code text-[11px] text-[var(--accent)]">
+          <span className="w-2 h-2 rounded-full bg-[var(--accent)] animate-pulse" />
+          <span>INFERENCE_COMPLETE &bull; GROQ LLaMA 3.3 70B</span>
         </div>
 
         <button
           type="button"
           id="summarize-another-button"
           onClick={onReset}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 min-h-[44px]"
+          className="btn-primary sm:w-auto px-5 py-2.5 text-xs font-display flex items-center justify-center gap-2"
         >
-          <RotateCcw className="w-4 h-4" />
+          <RotateCcw className="w-3.5 h-3.5" />
           <span>Summarize Another Document</span>
         </button>
       </div>
     </div>
   );
 };
+
+

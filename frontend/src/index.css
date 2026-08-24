@@ -2,10 +2,114 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  :root {
+    --bg: #111113;
+    --ink: #f8f7f4;
+    --accent: #ff4d00;
+    --accent-hover: #ff6622;
+    --accent-subtle: rgba(255, 77, 0, 0.08);
+    --ink-faint: rgba(248, 247, 244, 0.12);
+    --ink-muted: rgba(248, 247, 244, 0.6);
+    --surface-card: #18181b;
+    --surface-subtle: rgba(255, 255, 255, 0.03);
+    --grid-dot: rgba(255, 255, 255, 0.035);
+  }
+
+  .light, [data-theme="light"] {
+    --bg: #f8f7f4;
+    --ink: #111113;
+    --accent: #ff4d00;
+    --accent-hover: #e04400;
+    --accent-subtle: rgba(255, 77, 0, 0.08);
+    --ink-faint: rgba(17, 17, 19, 0.12);
+    --ink-muted: rgba(17, 17, 19, 0.6);
+    --surface-card: #ffffff;
+    --surface-subtle: rgba(0, 0, 0, 0.03);
+    --grid-dot: rgba(0, 0, 0, 0.04);
+  }
+
+  body {
+    background-color: var(--bg);
+    color: var(--ink);
+    font-family: 'Inter', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    background-image: radial-gradient(circle, var(--grid-dot) 1px, transparent 1px);
+    background-size: 32px 32px;
+    min-height: 100vh;
+  }
+
+  ::selection {
+    background: var(--accent);
+    color: var(--bg);
+  }
+}
+
+.font-display {
+  font-family: 'Syne', sans-serif;
+}
+
+.font-mono-code {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.font-body {
+  font-family: 'Inter', sans-serif;
+}
+
+.label-meta {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--ink-muted);
+}
+
+.status-pill {
+  padding: 4px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  color: var(--accent);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  background: var(--accent-subtle);
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #ffffff;
+  border: none;
+  padding: 1rem;
+  font-family: 'Syne', sans-serif;
+  font-weight: 800;
+  text-transform: uppercase;
+  cursor: pointer;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  letter-spacing: 0.05em;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+}
+
+.btn-primary:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  transform: none;
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(4px);
+    transform: translateY(6px);
   }
   to {
     opacity: 1;
@@ -14,5 +118,17 @@
 }
 
 .animate-fadeIn {
-  animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

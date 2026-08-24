@@ -6,7 +6,6 @@ import {
   Image as ImageIcon,
   X,
   FileCheck,
-  FileType as FileTypeIcon,
 } from 'lucide-react';
 import { AppError } from '../types';
 
@@ -42,7 +41,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
         if (error.code === 'file-too-large') {
           onError({
             status: 413,
-            title: 'File Too Large',
+            title: 'File Size Exceeded',
             message: `"${rejection.file.name}" is ${(rejection.file.size / (1024 * 1024)).toFixed(
               1
             )}MB. Maximum allowed file size is 10MB.`,
@@ -50,14 +49,14 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
         } else if (error.code === 'file-invalid-type') {
           onError({
             status: 415,
-            title: 'Unsupported File Format',
-            message: `"${rejection.file.name}" is not supported. Please upload a PDF, PNG, or JPEG file.`,
+            title: 'Unsupported Format',
+            message: `"${rejection.file.name}" is not supported. Please provide a PDF document, PNG, or JPEG scan.`,
           });
         } else {
           onError({
             status: 400,
-            title: 'Upload Validation Error',
-            message: error.message || 'The selected file could not be accepted.',
+            title: 'Upload Validation Issue',
+            message: error.message || 'The selected file could not be processed.',
           });
         }
         return;
@@ -66,12 +65,12 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
       if (acceptedFiles.length > 0) {
         const file = acceptedFiles[0];
 
-        // Additional sanity check
+        // Empty file check
         if (file.size === 0) {
           onError({
             status: 400,
-            title: 'Empty File',
-            message: 'The selected file is empty (0 bytes). Please upload a valid document.',
+            title: 'Empty Document',
+            message: 'The selected file contains 0 bytes. Please provide a valid document.',
           });
           return;
         }
@@ -79,8 +78,8 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
         if (file.size > MAX_FILE_SIZE_BYTES) {
           onError({
             status: 413,
-            title: 'File Too Large',
-            message: `The file exceeds the 10MB limit (${(file.size / (1024 * 1024)).toFixed(
+            title: 'File Size Exceeded',
+            message: `The document exceeds the 10MB limit (${(file.size / (1024 * 1024)).toFixed(
               1
             )}MB).`,
           });
@@ -111,112 +110,71 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
     onError(null);
   };
 
-  const isPdf = selectedFile?.name.toLowerCase().endsWith('.pdf') || selectedFile?.type === 'application/pdf';
+  const isPdf =
+    selectedFile?.name.toLowerCase().endsWith('.pdf') ||
+    selectedFile?.type === 'application/pdf';
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <label
-          htmlFor="dropzone-input"
-          className="text-xs font-semibold uppercase tracking-wider text-slate-700"
-        >
-          Document Upload
-        </label>
-        <span className="text-[11px] text-slate-500 font-medium">
-          PDF, PNG, JPEG &bull; Up to 10MB
-        </span>
-      </div>
-
+    <div className="space-y-3 w-full">
       {!selectedFile ? (
         <div
           {...getRootProps()}
           id="upload-dropzone"
-          className={`relative group rounded-2xl border-2 border-dashed p-6 sm:p-8 text-center cursor-pointer transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
+          className={`dropzone relative group w-full p-8 sm:p-12 text-center cursor-pointer transition-all duration-200 focus:outline-none border-2 border-dashed rounded flex flex-col items-center justify-center ${
             disabled
-              ? 'opacity-50 cursor-not-allowed bg-slate-50 border-slate-200'
+              ? 'opacity-40 cursor-not-allowed border-[var(--ink-faint)] bg-transparent'
               : isDragReject
-              ? 'border-rose-400 bg-rose-50/60 ring-2 ring-rose-300'
+              ? 'border-rose-500 bg-rose-950/20'
               : isDragActive
-              ? 'border-indigo-600 bg-indigo-50/70 scale-[0.99] shadow-inner ring-2 ring-indigo-200'
-              : 'border-slate-300/80 bg-white hover:bg-slate-50/80 hover:border-indigo-400 shadow-sm'
+              ? 'border-[var(--accent)] bg-[var(--accent-subtle)] scale-[0.99]'
+              : 'border-[var(--ink-faint)] bg-[var(--surface-subtle)] hover:border-[var(--accent)]'
           }`}
+          style={{ minHeight: '220px' }}
         >
           <input {...(getInputProps() as any)} id="dropzone-input" />
 
-          <div className="flex flex-col items-center justify-center space-y-3 pointer-events-none">
-            {/* Upload Cloud Icon / Visual State */}
-            <div
-              className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-300 ${
-                isDragActive
-                  ? 'bg-indigo-600 text-white scale-110 shadow-md shadow-indigo-200'
-                  : 'bg-indigo-50 text-indigo-600 group-hover:bg-indigo-100 group-hover:scale-105'
-              }`}
-            >
-              <UploadCloud className="w-7 h-7" />
+          <div className="flex flex-col items-center justify-center pointer-events-none">
+            <div className="dropzone-icon mb-4 text-[var(--accent)]">
+              <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M12 13v8M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242m-11-4L12 13l4-4" strokeLinecap="round" strokeLinejoin="round"></path>
+              </svg>
             </div>
 
-            <div className="space-y-1">
-              <p className="text-sm font-semibold text-slate-800">
-                {isDragActive ? (
-                  <span className="text-indigo-600">Drop your document here</span>
-                ) : (
-                  <>
-                    <span className="text-indigo-600 hover:text-indigo-700">Click to browse</span>{' '}
-                    <span className="text-slate-600 font-normal">or drag & drop</span>
-                  </>
-                )}
-              </p>
-              <p className="text-xs text-slate-500 max-w-xs mx-auto">
-                Upload your PDF reports, scanned documents, receipts, or notes
-              </p>
-            </div>
-
-            {/* Badges */}
-            <div className="flex items-center justify-center gap-2 pt-1">
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium bg-slate-100 text-slate-600 border border-slate-200/60">
-                <FileText className="w-3 h-3 text-red-500" /> PDF
-              </span>
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium bg-slate-100 text-slate-600 border border-slate-200/60">
-                <ImageIcon className="w-3 h-3 text-blue-500" /> PNG / JPG
-              </span>
-            </div>
+            <p className="text-sm font-semibold tracking-wide uppercase text-[var(--ink)] mb-2">
+              {isDragActive ? 'Release Document to Upload' : 'Choose Document or Drag & Drop'}
+            </p>
+            <p className="label-meta">PDF, PNG, JPEG &bull; MAX 10MB</p>
           </div>
         </div>
       ) : (
-        /* Selected File Card */
+        /* Selected Inbound Document Slip */
         <div
           id="selected-file-card"
-          className="rounded-2xl border border-indigo-200 bg-indigo-50/40 p-4 transition-all animate-fadeIn shadow-sm"
+          className="rounded border border-[var(--accent)] bg-[var(--accent-subtle)] p-4 sm:p-5 transition-all animate-fadeIn"
         >
           <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <div
-                className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm ${
-                  isPdf
-                    ? 'bg-red-100 text-red-700 border border-red-200'
-                    : 'bg-blue-100 text-blue-700 border border-blue-200'
-                }`}
-              >
+            <div className="flex items-center gap-3.5 min-w-0">
+              <div className="w-10 h-10 rounded border border-[var(--accent)]/40 bg-[var(--bg)] flex items-center justify-center flex-shrink-0 text-[var(--accent)]">
                 {isPdf ? <FileText className="w-5 h-5" /> : <ImageIcon className="w-5 h-5" />}
               </div>
 
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <p className="text-sm font-semibold text-slate-800 truncate max-w-[200px] sm:max-w-xs">
+                  <p className="text-sm font-semibold text-[var(--ink)] truncate max-w-[220px] sm:max-w-md">
                     {selectedFile.name}
                   </p>
-                  <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-2 py-0.5 rounded uppercase bg-indigo-100/70 text-indigo-700 border border-indigo-200/60">
-                    <FileCheck className="w-2.5 h-2.5" /> Ready
+                  <span className="text-[10px] font-mono-code px-1.5 py-0.5 rounded border border-[var(--accent)] text-[var(--accent)] font-bold uppercase">
+                    [ READY ]
                   </span>
                 </div>
-                <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
-                  <span className="font-mono">
+                <div className="flex items-center gap-2 text-xs text-[var(--ink-muted)] mt-1 font-mono-code">
+                  <span>
                     {selectedFile.size > 1024 * 1024
                       ? `${(selectedFile.size / (1024 * 1024)).toFixed(2)} MB`
                       : `${(selectedFile.size / 1024).toFixed(1)} KB`}
                   </span>
                   <span>&bull;</span>
-                  <span className="capitalize">{isPdf ? 'PDF Document' : 'Image Scan'}</span>
+                  <span>{isPdf ? 'PDF DOCUMENT' : 'IMAGE SCAN'}</span>
                 </div>
               </div>
             </div>
@@ -227,10 +185,10 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
               onClick={handleRemoveFile}
               disabled={disabled}
               aria-label="Remove selected file"
-              className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl border border-transparent hover:border-rose-200 transition-all focus:outline-none focus:ring-2 focus:ring-rose-400 disabled:opacity-50"
+              className="p-2 text-[var(--ink-muted)] hover:text-[var(--ink)] hover:bg-[var(--ink-faint)] rounded border border-[var(--ink-faint)] transition-all focus:outline-none focus:ring-1 focus:ring-[var(--accent)] disabled:opacity-50 min-w-[36px] min-h-[36px] flex items-center justify-center font-mono-code text-xs"
               title="Remove file"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -238,3 +196,4 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
     </div>
   );
 };
+

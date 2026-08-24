@@ -1,5 +1,13 @@
-import React, { useState } from 'react';
-import { Sparkles, FileText, ArrowRight } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import {
+  Sparkles,
+  ArrowRight,
+  Sun,
+  Moon,
+  Feather,
+  CheckCircle2,
+  AlertCircle,
+} from 'lucide-react';
 import { UploadZone } from './components/UploadZone';
 import { LengthSelector } from './components/LengthSelector';
 import { LoadingState } from './components/LoadingState';
@@ -14,8 +22,35 @@ export default function App() {
   const [summaryResult, setSummaryResult] = useState<SummaryResponse | null>(null);
   const [uploadError, setUploadError] = useState<AppError | null>(null);
 
+  // Dark Mode State
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('theme');
+      if (saved === 'dark') return true;
+      if (saved === 'light') return false;
+      return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [isDarkMode]);
+
+  const toggleTheme = () => {
+    setIsDarkMode((prev) => !prev);
+  };
+
   // Health check state
-  const [backendHealth, setBackendHealth] = useState<{ status: string; message?: string } | null>(null);
+  const [backendHealth, setBackendHealth] = useState<{ status: string; message?: string } | null>(
+    null
+  );
   const [isCheckingHealth, setIsCheckingHealth] = useState<boolean>(false);
 
   const rawApiUrl = (import.meta as any).env?.VITE_API_URL;
@@ -33,8 +68,8 @@ export default function App() {
     if (!selectedFile) {
       setUploadError({
         status: 400,
-        title: 'No File Selected',
-        message: 'Please upload a PDF or image document before requesting a summary.',
+        title: 'No Manuscript Selected',
+        message: 'Please provide a PDF document or scanned image to begin summarization.',
       });
       return;
     }
@@ -72,11 +107,12 @@ export default function App() {
             `Server returned HTTP ${response.status}`;
 
           if (response.status === 502) {
-            errorMessage = "Couldn't generate a summary right now. Please try again in a moment.";
+            errorMessage =
+              "Could not generate a summary right now. Please verify service availability and try again.";
           } else if (response.status === 422) {
             errorMessage =
               data?.detail ||
-              "No readable text found in this document. Please try a clearer scan or a different file.";
+              "No readable text found in this document. Please ensure the document is clear or contains extractable text.";
           }
 
           lastError = {
@@ -92,7 +128,9 @@ export default function App() {
         lastError = {
           status: 0,
           title: 'Connection Error',
-          message: err?.message || 'Failed to connect to the backend server. Please verify your connection.',
+          message:
+            err?.message ||
+            'Failed to connect to the backend server. Please verify your connection or local proxy.',
         };
       }
     }
@@ -104,7 +142,7 @@ export default function App() {
         lastError || {
           status: 500,
           title: 'Processing Failed',
-          message: 'An unexpected error occurred while summarizing your document.',
+          message: 'An unexpected error occurred while distilling your manuscript.',
         }
       );
     }
@@ -141,27 +179,46 @@ export default function App() {
     }
 
     if (!succeeded) {
-      setBackendHealth({ status: 'error', message: 'Offline or unreachable' });
+      setBackendHealth({ status: 'error', message: 'Backend unreachable or offline' });
     }
     setIsCheckingHealth(false);
   };
 
   return (
-    <div className="min-h-screen bg-slate-100/70 text-slate-800 py-8 sm:py-12 px-4 sm:px-6 lg:px-8 flex flex-col justify-between antialiased">
+    <div className="min-h-screen bg-[var(--bg)] text-[var(--ink)] py-8 sm:py-12 px-4 sm:px-6 lg:px-8 flex flex-col justify-between transition-colors duration-200 font-body">
       <main className="max-w-2xl w-full mx-auto space-y-6">
-        {/* Top Header */}
-        <header className="text-center space-y-2">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold uppercase tracking-wider bg-indigo-50 text-indigo-700 rounded-full border border-indigo-200/60 shadow-2xs">
-            <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-            <span>AI Document Intelligence</span>
+        {/* Header & Theme Toggle */}
+        <header className="relative space-y-3 pt-2">
+          <div className="flex items-center justify-between gap-4">
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[var(--ink)] font-display uppercase">
+              Document Summary Assistant
+            </h1>
+
+            {/* Dark/Light Mode Toggle */}
+            <button
+              type="button"
+              id="theme-toggle-button"
+              onClick={toggleTheme}
+              aria-label={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-[var(--ink-faint)] bg-[var(--surface-card)] text-xs font-mono-code text-[var(--ink-muted)] hover:text-[var(--ink)] hover:border-[var(--accent)] transition-all focus:outline-none focus:ring-1 focus:ring-[var(--accent)] flex-shrink-0"
+              title={isDarkMode ? 'Light mode' : 'Dark mode'}
+            >
+              {isDarkMode ? (
+                <>
+                  <Sun className="w-3.5 h-3.5 text-[var(--accent)]" />
+                  <span>LIGHT</span>
+                </>
+              ) : (
+                <>
+                  <Moon className="w-3.5 h-3.5 text-[var(--accent)]" />
+                  <span>DARK</span>
+                </>
+              )}
+            </button>
           </div>
 
-          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
-            Document Summary Assistant
-          </h1>
-
-          <p className="text-sm text-slate-600 max-w-md mx-auto leading-relaxed">
-            Extract and summarize key takeaways from PDFs and scanned document images in seconds.
+          <p className="text-xs sm:text-sm text-[var(--ink-muted)] max-w-xl leading-relaxed">
+            Summarize dense PDF reports, manuscripts, and scanned pages into clear, concise key points.
           </p>
         </header>
 
@@ -171,7 +228,7 @@ export default function App() {
           <SummaryResult result={summaryResult} onReset={handleReset} />
         ) : (
           /* Main Interactive Form Card */
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200/90 p-5 sm:p-8 space-y-6">
+          <div className="bg-[var(--surface-card)] rounded border border-[var(--ink-faint)] p-5 sm:p-8 space-y-6 shadow-sm">
             {/* Error Banner */}
             {uploadError && (
               <ErrorBanner error={uploadError} onDismiss={() => setUploadError(null)} />
@@ -206,10 +263,10 @@ export default function App() {
                   id="summarize-submit-button"
                   type="submit"
                   disabled={isSummarizing || !selectedFile}
-                  className="w-full flex items-center justify-center gap-2 py-3.5 px-5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-semibold rounded-xl text-sm transition-all focus:ring-4 focus:ring-indigo-100 focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed shadow-sm min-h-[48px]"
+                  className="btn-primary w-full flex items-center justify-center gap-2 py-4 px-6 text-sm font-display uppercase tracking-wider"
                 >
                   <Sparkles className="w-4 h-4" />
-                  <span>Extract & Summarize Document</span>
+                  <span>Summarize Document</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </form>
@@ -219,11 +276,11 @@ export default function App() {
       </main>
 
       {/* Footer Connectivity & Health Diagnostic */}
-      <footer className="max-w-2xl w-full mx-auto mt-10 pt-6 border-t border-slate-200/80 text-xs text-slate-500 space-y-2">
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+      <footer className="max-w-2xl w-full mx-auto mt-10 pt-6 border-t border-[var(--ink-faint)] text-xs text-[var(--ink-muted)] space-y-3 font-mono-code">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px]">
           <div className="flex items-center gap-2">
-            <span className="font-medium text-slate-600">Backend API:</span>
-            <code className="bg-slate-200/60 px-2 py-0.5 rounded text-slate-700 font-mono text-[11px]">
+            <span>INFERENCE_ENDPOINT:</span>
+            <code className="bg-[var(--surface-subtle)] px-2 py-0.5 rounded text-[var(--ink)] border border-[var(--ink-faint)]">
               {apiUrl || '/api (proxied)'}
             </code>
           </div>
@@ -233,18 +290,22 @@ export default function App() {
             type="button"
             onClick={checkBackendHealth}
             disabled={isCheckingHealth}
-            className="text-xs font-medium text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg transition-colors shadow-2xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="text-[11px] font-mono-code text-[var(--ink)] hover:text-[var(--accent)] bg-[var(--surface-card)] hover:bg-[var(--surface-subtle)] border border-[var(--ink-faint)] px-3 py-1.5 rounded transition-colors focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
           >
-            {isCheckingHealth ? 'Testing connection...' : 'Test Backend Health'}
+            {isCheckingHealth ? '[ CHECKING... ]' : '[ DIAGNOSTIC_PING ]'}
           </button>
         </div>
 
         {backendHealth && (
           <div className="text-center sm:text-left text-xs pt-1">
             {backendHealth.status === 'ok' ? (
-              <span className="text-emerald-700 font-medium">✓ Backend online & ready (HTTP 200)</span>
+              <span className="text-[var(--accent)] font-semibold inline-flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5" /> [ STATUS: 200_OK &bull; PIPELINE_READY ]
+              </span>
             ) : (
-              <span className="text-rose-600 font-medium">✗ {backendHealth.message}</span>
+              <span className="text-rose-500 font-semibold inline-flex items-center gap-1.5">
+                <AlertCircle className="w-3.5 h-3.5" /> [ STATUS: FAILED &bull; {backendHealth.message} ]
+              </span>
             )}
           </div>
         )}
@@ -252,3 +313,4 @@ export default function App() {
     </div>
   );
 }
+
