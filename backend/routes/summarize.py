@@ -3,6 +3,7 @@ from typing import Literal
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel
 from services.extraction import ExtractionError, NoTextFoundError, extract_text
+from services.summarization import SummarizationError, summarize_text
 
 logger = logging.getLogger("summarize_route")
 
@@ -129,28 +130,34 @@ async def summarize_document(
     if length.lower() in ["short", "medium", "long"]:
         normalized_length = length.lower()  # type: ignore
 
-    # 7. Derive preview summary, word count, and key points from REAL extracted text
+    # 7. Word count from the ORIGINAL extracted text
     words = extracted_text.split()
     word_count = len(words)
 
-    # Preview summary: first 300 characters of extracted text + "..." if longer
-    if len(extracted_text) > 300:
-        preview_summary = extracted_text[:300].rstrip() + "..."
-    else:
-        preview_summary = extracted_text
-
-    # Note: Phase 4 will replace key_points with real LLM / AI generated points
-    key_points = [
-        f"Extracted {word_count} words across the document.",
-        "Text parsing and OCR extraction successfully completed.",
-        "Phase 4 will generate intelligent AI summaries and key insights from this text.",
-    ]
+    # 8. Real LLM Summarization using Groq (Phase 4)
+    try:
+        print(f"[Summarization Pipeline] Generating {normalized_length} summary for '{file.filename}'...")
+        summary_result = summarize_text(extracted_text, normalized_length)
+    except SummarizationError as sum_err:
+        print(f"[Summarization Error] LLM generation failed for '{file.filename}': {sum_err}")
+        logger.error("Summarization error for %s: %s", file.filename, sum_err, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Summary generation failed, please try again",
+        )
+    except Exception as exc:
+        print(f"[Summarization Error] Unexpected error during AI summary for '{file.filename}': {exc}")
+        logger.error("Unexpected summarization error for %s: %s", file.filename, exc, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Summary generation failed, please try again",
+        )
 
     return SummaryResponse(
         filename=file.filename,
         file_type=detected_type,
         length=normalized_length,
-        summary=preview_summary,
-        key_points=key_points,
+        summary=summary_result.get("summary", "").strip(),
+        key_points=summary_result.get("key_points", []),
         word_count=word_count,
     )

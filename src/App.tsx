@@ -76,10 +76,15 @@ export default function App() {
         const data = await response.json().catch(() => null);
 
         if (!response.ok) {
-          const errorMessage =
+          let errorMessage =
             data?.detail ||
             data?.message ||
             `Server returned ${response.status}: ${response.statusText}`;
+
+          if (response.status === 502) {
+            errorMessage = "Couldn't generate a summary right now. Please try again in a moment.";
+          }
+
           lastError = {
             status: response.status,
             message: errorMessage,
@@ -151,13 +156,13 @@ export default function App() {
           {/* Header */}
           <header className="text-center mb-8">
             <div className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold uppercase tracking-wider bg-indigo-50 text-indigo-700 rounded-full mb-3 border border-indigo-100">
-              <span>Phase 3: Text Extraction & OCR</span>
+              <span>Phase 4: AI Document Summarization</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
               Document Summary Assistant
             </h1>
             <p className="text-sm text-slate-500 mt-1.5">
-              Upload a PDF or image to extract real text and inspect the document structure
+              Upload a PDF or image to extract text and generate an AI-powered summary
             </p>
           </header>
 
@@ -261,6 +266,8 @@ export default function App() {
                     ? 'File Too Large'
                     : uploadError.status === 415
                     ? 'Unsupported File Type'
+                    : uploadError.status === 502
+                    ? 'Summary Generation Failed'
                     : 'Extraction Failed'}
                 </span>
                 {uploadError.status > 0 && (
@@ -319,10 +326,10 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Extracted Text Preview Box */}
+              {/* Extracted Text / AI Summary Preview Box */}
               <div className="space-y-1.5">
                 <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                  Extracted Text Preview (First 300 Chars)
+                  Summary ({summaryResult.length} length)
                 </h3>
                 <div className="p-4 bg-slate-50 rounded-lg border border-slate-200 text-slate-800 text-sm leading-relaxed whitespace-pre-wrap font-sans">
                   {summaryResult.summary}
@@ -333,7 +340,7 @@ export default function App() {
               {summaryResult.key_points && summaryResult.key_points.length > 0 && (
                 <div className="space-y-1.5">
                   <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                    Pipeline Status & Key Points
+                    Key Takeaways
                   </h3>
                   <ul className="list-disc list-inside space-y-1 text-sm text-slate-700 bg-slate-50 p-3.5 rounded-lg border border-slate-200">
                     {summaryResult.key_points.map((point, index) => (
@@ -346,10 +353,10 @@ export default function App() {
               )}
 
               {/* Phase Note */}
-              <div className="p-3 bg-blue-50 rounded-lg border border-blue-200 text-blue-900 text-xs flex items-start gap-2">
-                <span className="font-bold text-blue-600">&bull;</span>
+              <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200 text-emerald-900 text-xs flex items-start gap-2">
+                <span className="font-bold text-emerald-600">&bull;</span>
                 <p>
-                  <strong>Phase 3 Complete:</strong> Real text extraction from PDFs and image OCR is working. In <strong>Phase 4</strong>, the raw extracted text will be sent to the Gemini / LLM summarization pipeline to produce dynamic summaries and key takeaways.
+                  <strong>Phase 4 Complete:</strong> AI document summarization active using Groq LLaMA 3.3. Document text parsed, OCR extracted, and structured summary generated.
                 </p>
               </div>
             </section>
