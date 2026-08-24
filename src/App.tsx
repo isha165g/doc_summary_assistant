@@ -150,14 +150,14 @@ export default function App() {
           
           {/* Header */}
           <header className="text-center mb-8">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold uppercase tracking-wider bg-blue-50 text-blue-700 rounded-full mb-3 border border-blue-100">
-              <span>Phase 2: File Upload Pipeline</span>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold uppercase tracking-wider bg-indigo-50 text-indigo-700 rounded-full mb-3 border border-indigo-100">
+              <span>Phase 3: Text Extraction & OCR</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
               Document Summary Assistant
             </h1>
             <p className="text-sm text-slate-500 mt-1.5">
-              Upload a PDF or image document to test the summarization pipeline contract
+              Upload a PDF or image to extract real text and inspect the document structure
             </p>
           </header>
 
@@ -179,7 +179,7 @@ export default function App() {
                   onChange={handleFileChange}
                   accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
                   disabled={isSummarizing}
-                  className="block w-full text-sm text-slate-600 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-slate-100 file:text-slate-800 hover:file:bg-slate-200 cursor-pointer border border-slate-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all disabled:opacity-60"
+                  className="block w-full text-sm text-slate-600 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-slate-100 file:text-slate-800 hover:file:bg-slate-200 cursor-pointer border border-slate-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all disabled:opacity-60"
                 />
               </div>
               <p className="text-xs text-slate-500">
@@ -213,7 +213,7 @@ export default function App() {
                 value={summaryLength}
                 onChange={(e) => setSummaryLength(e.target.value as 'short' | 'medium' | 'long')}
                 disabled={isSummarizing}
-                className="block w-full rounded-lg border border-slate-200 bg-white py-2.5 px-3 text-sm text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 transition-all"
+                className="block w-full rounded-lg border border-slate-200 bg-white py-2.5 px-3 text-sm text-slate-800 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-60 transition-all"
               >
                 <option value="short">Short (Quick bullet highlights)</option>
                 <option value="medium">Medium (Balanced overview — Default)</option>
@@ -226,7 +226,7 @@ export default function App() {
               id="summarize-submit-button"
               type="submit"
               disabled={isSummarizing || !selectedFile}
-              className="w-full flex items-center justify-center py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg text-sm transition-all focus:ring-4 focus:ring-blue-100 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+              className="w-full flex items-center justify-center py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg text-sm transition-all focus:ring-4 focus:ring-indigo-100 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
             >
               {isSummarizing ? (
                 <span className="inline-flex items-center gap-2">
@@ -234,10 +234,10 @@ export default function App() {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
                   </svg>
-                  Processing...
+                  Extracting text & processing...
                 </span>
               ) : (
-                'Summarize Document'
+                'Extract & Summarize'
               )}
             </button>
           </form>
@@ -247,54 +247,84 @@ export default function App() {
             <div
               id="upload-error-box"
               role="alert"
-              className="mt-6 p-4 rounded-lg bg-rose-50 border border-rose-200 text-rose-900 text-sm space-y-1 animate-fade-in"
+              className={`mt-6 p-4 rounded-lg border text-sm space-y-1.5 animate-fade-in ${
+                uploadError.status === 422
+                  ? 'bg-amber-50 border-amber-200 text-amber-900'
+                  : 'bg-rose-50 border-rose-200 text-rose-900'
+              }`}
             >
               <div className="flex items-center justify-between font-semibold">
-                <span>Upload Failed</span>
+                <span>
+                  {uploadError.status === 422
+                    ? 'No Readable Text Found'
+                    : uploadError.status === 413
+                    ? 'File Too Large'
+                    : uploadError.status === 415
+                    ? 'Unsupported File Type'
+                    : 'Extraction Failed'}
+                </span>
                 {uploadError.status > 0 && (
-                  <span className="text-xs bg-rose-100 text-rose-800 px-2 py-0.5 rounded border border-rose-200">
+                  <span
+                    className={`text-xs px-2 py-0.5 rounded border ${
+                      uploadError.status === 422
+                        ? 'bg-amber-100 text-amber-800 border-amber-200'
+                        : 'bg-rose-100 text-rose-800 border-rose-200'
+                    }`}
+                  >
                     HTTP {uploadError.status}
                   </span>
                 )}
               </div>
-              <p className="text-xs text-rose-700">
-                {uploadError.message}
+              <p className="text-xs leading-relaxed">
+                {uploadError.status === 422
+                  ? "We couldn't find readable text in this file. Try a clearer scan or a different file."
+                  : uploadError.message}
               </p>
             </div>
           )}
 
-          {/* Response Display */}
+          {/* Extracted Response Display */}
           {summaryResult && (
             <section
               id="summary-results-container"
-              className="mt-8 pt-6 border-t border-slate-200 space-y-4"
+              className="mt-8 pt-6 border-t border-slate-200 space-y-5"
             >
               <div className="flex items-center justify-between">
                 <h2 className="text-base font-bold text-slate-800">
-                  Summary Result (Stubbed)
+                  Extracted Document Text
                 </h2>
                 <div className="flex items-center gap-1.5">
                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">
                     {summaryResult.file_type}
                   </span>
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize bg-blue-50 text-blue-700 border border-blue-100">
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize bg-indigo-50 text-indigo-700 border border-indigo-100">
                     {summaryResult.length}
                   </span>
                 </div>
               </div>
 
-              {/* Metadata row */}
-              <div className="text-xs text-slate-500 flex flex-wrap gap-x-4 gap-y-1 bg-slate-50 p-2.5 rounded-lg border border-slate-200/60 font-mono">
-                <div><strong className="text-slate-700">File:</strong> {summaryResult.filename}</div>
-                <div><strong className="text-slate-700">Word Count:</strong> {summaryResult.word_count}</div>
+              {/* Statistics & Metadata bar */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs bg-slate-50 p-3 rounded-lg border border-slate-200/80 font-mono">
+                <div>
+                  <span className="text-slate-500 block">File Name:</span>
+                  <span className="font-semibold text-slate-800 truncate block">{summaryResult.filename}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">Word Count:</span>
+                  <span className="font-semibold text-indigo-700 text-sm block">{summaryResult.word_count} words</span>
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <span className="text-slate-500 block">Extraction:</span>
+                  <span className="text-emerald-700 font-semibold block">✓ Verified</span>
+                </div>
               </div>
 
-              {/* Summary Text Box */}
+              {/* Extracted Text Preview Box */}
               <div className="space-y-1.5">
                 <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                  Summary Overview
+                  Extracted Text Preview (First 300 Chars)
                 </h3>
-                <div className="p-3.5 bg-slate-50 rounded-lg border border-slate-200 text-slate-700 text-sm leading-relaxed">
+                <div className="p-4 bg-slate-50 rounded-lg border border-slate-200 text-slate-800 text-sm leading-relaxed whitespace-pre-wrap font-sans">
                   {summaryResult.summary}
                 </div>
               </div>
@@ -303,7 +333,7 @@ export default function App() {
               {summaryResult.key_points && summaryResult.key_points.length > 0 && (
                 <div className="space-y-1.5">
                   <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                    Key Points
+                    Pipeline Status & Key Points
                   </h3>
                   <ul className="list-disc list-inside space-y-1 text-sm text-slate-700 bg-slate-50 p-3.5 rounded-lg border border-slate-200">
                     {summaryResult.key_points.map((point, index) => (
@@ -316,10 +346,10 @@ export default function App() {
               )}
 
               {/* Phase Note */}
-              <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 text-amber-900 text-xs flex items-start gap-2">
-                <span className="font-bold">&bull;</span>
+              <div className="p-3 bg-blue-50 rounded-lg border border-blue-200 text-blue-900 text-xs flex items-start gap-2">
+                <span className="font-bold text-blue-600">&bull;</span>
                 <p>
-                  <strong>Phase 2 Contract Verified:</strong> The file upload and data contract are functioning end-to-end. Real PDF text extraction, OCR, and AI summarization models will be wired into this pipeline in Phase 3 & 4.
+                  <strong>Phase 3 Complete:</strong> Real text extraction from PDFs and image OCR is working. In <strong>Phase 4</strong>, the raw extracted text will be sent to the Gemini / LLM summarization pipeline to produce dynamic summaries and key takeaways.
                 </p>
               </div>
             </section>

@@ -2,6 +2,7 @@ import logging
 from typing import Literal
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel
+from services.extraction import ExtractionError, NoTextFoundError, extract_text
 
 logger = logging.getLogger("summarize_route")
 
@@ -32,19 +33,19 @@ class SummaryResponse(BaseModel):
     "/api/summarize",
     response_model=SummaryResponse,
     status_code=status.HTTP_200_OK,
-    summary="Upload a document and receive a stubbed summary response",
+    summary="Upload a document and receive extracted text & preview summary",
 )
 async def summarize_document(
     file: UploadFile = File(...),
     length: str = Form(default="medium"),
 ):
     """
-    Phase 2 File Upload Pipeline Endpoint:
-    - Validates file presence and non-empty content (400)
-    - Validates MIME type (PDF, PNG, JPEG) (415)
-    - Validates file size <= 10MB (413)
-    - Logs MIME branch
-    - Returns structured stubbed summary JSON
+    Phase 3 Document Summarization Endpoint:
+    - Validates file presence, size (<=10MB), and MIME type
+    - Extracts raw text using pdfplumber (PDF) or Tesseract OCR (Image)
+    - Returns 422 Unprocessable Entity if no text is found
+    - Returns 500 Internal Server Error if extraction fails unexpectedly
+    - Returns first 300 characters of real extracted text and word count
     """
     # 1. Validate file presence & filename
     if not file or not file.filename:
@@ -93,30 +94,63 @@ async def summarize_document(
 
     # 4. MIME-type branching and logging
     if detected_type == "pdf":
-        print(f"[Summarize Pipeline] Received PDF document: '{file.filename}' ({file_size} bytes)")
-        logger.info("MIME Branch -> PDF processing pipeline for %s", file.filename)
+        print(f"[Extraction Pipeline] Processing PDF document: '{file.filename}' ({file_size} bytes)")
+        logger.info("Extracting text from PDF: %s", file.filename)
     else:
-        print(f"[Summarize Pipeline] Received Image document: '{file.filename}' ({file_size} bytes)")
-        logger.info("MIME Branch -> Image OCR processing pipeline for %s", file.filename)
+        print(f"[Extraction Pipeline] Processing Image document with OCR: '{file.filename}' ({file_size} bytes)")
+        logger.info("Extracting text from Image with OCR: %s", file.filename)
 
-    # 5. Normalize requested length
+    # 5. Extract real text using extraction service
+    try:
+        extracted_text = extract_text(content, detected_type)
+    except NoTextFoundError as no_text_err:
+        print(f"[Extraction Warning] No text found in '{file.filename}': {no_text_err}")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="No readable text found in this document. Please try a clearer scan or a different file.",
+        )
+    except ExtractionError as ext_err:
+        print(f"[Extraction Error] Failed parsing '{file.filename}': {ext_err}")
+        logger.error("Extraction error for %s: %s", file.filename, ext_err, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to process document.",
+        )
+    except Exception as exc:
+        print(f"[Extraction Error] Unexpected server error for '{file.filename}': {exc}")
+        logger.error("Unexpected error for %s: %s", file.filename, exc, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to process document.",
+        )
+
+    # 6. Normalize requested length
     normalized_length: Literal["short", "medium", "long"] = "medium"
     if length.lower() in ["short", "medium", "long"]:
         normalized_length = length.lower()  # type: ignore
 
-    # 6. Return STUBBED summary contract
+    # 7. Derive preview summary, word count, and key points from REAL extracted text
+    words = extracted_text.split()
+    word_count = len(words)
+
+    # Preview summary: first 300 characters of extracted text + "..." if longer
+    if len(extracted_text) > 300:
+        preview_summary = extracted_text[:300].rstrip() + "..."
+    else:
+        preview_summary = extracted_text
+
+    # Note: Phase 4 will replace key_points with real LLM / AI generated points
+    key_points = [
+        f"Extracted {word_count} words across the document.",
+        "Text parsing and OCR extraction successfully completed.",
+        "Phase 4 will generate intelligent AI summaries and key insights from this text.",
+    ]
+
     return SummaryResponse(
         filename=file.filename,
         file_type=detected_type,
         length=normalized_length,
-        summary=(
-            "This is a placeholder summary. Real extraction and "
-            "summarization will be added in later phases."
-        ),
-        key_points=[
-            "Placeholder key point 1",
-            "Placeholder key point 2",
-            "Placeholder key point 3",
-        ],
-        word_count=0,
+        summary=preview_summary,
+        key_points=key_points,
+        word_count=word_count,
     )
