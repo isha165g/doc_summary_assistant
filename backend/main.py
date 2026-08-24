@@ -1,11 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from routes.summarize import router as summarize_router
 
 # Initialize FastAPI application
 app = FastAPI(
     title="Document Summary Assistant API",
-    description="Backend API for Document Summary Assistant (Phase 1: Skeleton Scaffolding)",
-    version="0.1.0",
+    description="Backend API for Document Summary Assistant (Phase 2: File Upload Pipeline)",
+    version="0.2.0",
 )
 
 # CORS configuration to allow requests from the Vite frontend
@@ -24,6 +25,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Register routes
+app.include_router(summarize_router)
+
 
 @app.get("/api/health")
 async def health_check():
@@ -36,3 +40,4 @@ async def health_check():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+
