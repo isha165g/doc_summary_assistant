@@ -309,7 +309,24 @@ async def summarize_document_stream(
 
             try:
                 # Run synchronous extraction in threadpool
-                extracted_text = await asyncio.to_thread(extract_text, content, detected_type)
+                logger.info(
+                    "STARTING EXTRACTION: file=%s type=%s size=%d bytes",
+                    file.filename,
+                    detected_type,
+                    len(content),
+                )
+
+                extracted_text = await asyncio.to_thread(
+                    extract_text,
+                    content,
+                    detected_type,
+                )
+
+                logger.info(
+                    "EXTRACTION FINISHED: file=%s words=%d",
+                    file.filename,
+                    len(extracted_text.split()),
+                )
             except NoTextFoundError:
                 yield f"data: {json.dumps({'stage': 'error', 'status': 422, 'message': 'No readable text found in this document. Please ensure the document is clear.'})}\n\n"
                 return
