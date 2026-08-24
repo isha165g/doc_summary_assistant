@@ -1,41 +1,31 @@
 import React, { useState } from 'react';
-
-interface SummaryResponse {
-  filename: string;
-  file_type: 'pdf' | 'image';
-  length: 'short' | 'medium' | 'long';
-  summary: string;
-  key_points: string[];
-  word_count: number;
-}
-
-interface UploadError {
-  status: number;
-  message: string;
-}
+import { Sparkles, FileText, ArrowRight } from 'lucide-react';
+import { UploadZone } from './components/UploadZone';
+import { LengthSelector } from './components/LengthSelector';
+import { LoadingState } from './components/LoadingState';
+import { SummaryResult } from './components/SummaryResult';
+import { ErrorBanner } from './components/ErrorBanner';
+import { SummaryResponse, SummaryLength, AppError } from './types';
 
 export default function App() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [summaryLength, setSummaryLength] = useState<'short' | 'medium' | 'long'>('medium');
+  const [summaryLength, setSummaryLength] = useState<SummaryLength>('medium');
   const [isSummarizing, setIsSummarizing] = useState<boolean>(false);
   const [summaryResult, setSummaryResult] = useState<SummaryResponse | null>(null);
-  const [uploadError, setUploadError] = useState<UploadError | null>(null);
+  const [uploadError, setUploadError] = useState<AppError | null>(null);
 
-  // Backend Health check state
+  // Health check state
   const [backendHealth, setBackendHealth] = useState<{ status: string; message?: string } | null>(null);
   const [isCheckingHealth, setIsCheckingHealth] = useState<boolean>(false);
 
-  // API URL resolution
   const rawApiUrl = (import.meta as any).env?.VITE_API_URL;
   const apiUrl: string = rawApiUrl || '';
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleReset = () => {
+    setSelectedFile(null);
+    setSummaryResult(null);
     setUploadError(null);
-    if (e.target.files && e.target.files.length > 0) {
-      setSelectedFile(e.target.files[0]);
-    } else {
-      setSelectedFile(null);
-    }
+    setIsSummarizing(false);
   };
 
   const handleSummarize = async (e: React.FormEvent) => {
@@ -43,7 +33,8 @@ export default function App() {
     if (!selectedFile) {
       setUploadError({
         status: 400,
-        message: 'Please select a document before clicking Summarize.',
+        title: 'No File Selected',
+        message: 'Please upload a PDF or image document before requesting a summary.',
       });
       return;
     }
@@ -63,8 +54,7 @@ export default function App() {
     endpointsToTry.push('/api/summarize');
 
     let responseData: SummaryResponse | null = null;
-    let requestSucceeded = false;
-    let lastError: UploadError | null = null;
+    let lastError: AppError | null = null;
 
     for (const endpoint of endpointsToTry) {
       try {
@@ -79,10 +69,14 @@ export default function App() {
           let errorMessage =
             data?.detail ||
             data?.message ||
-            `Server returned ${response.status}: ${response.statusText}`;
+            `Server returned HTTP ${response.status}`;
 
           if (response.status === 502) {
             errorMessage = "Couldn't generate a summary right now. Please try again in a moment.";
+          } else if (response.status === 422) {
+            errorMessage =
+              data?.detail ||
+              "No readable text found in this document. Please try a clearer scan or a different file.";
           }
 
           lastError = {
@@ -92,21 +86,27 @@ export default function App() {
           break;
         } else {
           responseData = data;
-          requestSucceeded = true;
           break;
         }
       } catch (err: any) {
         lastError = {
           status: 0,
-          message: err?.message || 'Failed to connect to backend server',
+          title: 'Connection Error',
+          message: err?.message || 'Failed to connect to the backend server. Please verify your connection.',
         };
       }
     }
 
-    if (requestSucceeded && responseData) {
+    if (responseData) {
       setSummaryResult(responseData);
     } else {
-      setUploadError(lastError || { status: 500, message: 'Unknown upload error' });
+      setUploadError(
+        lastError || {
+          status: 500,
+          title: 'Processing Failed',
+          message: 'An unexpected error occurred while summarizing your document.',
+        }
+      );
     }
 
     setIsSummarizing(false);
@@ -147,253 +147,108 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-xl mx-auto space-y-6">
-        
-        {/* Main Card */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 sm:p-8">
-          
-          {/* Header */}
-          <header className="text-center mb-8">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold uppercase tracking-wider bg-indigo-50 text-indigo-700 rounded-full mb-3 border border-indigo-100">
-              <span>Phase 4: AI Document Summarization</span>
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
-              Document Summary Assistant
-            </h1>
-            <p className="text-sm text-slate-500 mt-1.5">
-              Upload a PDF or image to extract text and generate an AI-powered summary
-            </p>
-          </header>
+    <div className="min-h-screen bg-slate-100/70 text-slate-800 py-8 sm:py-12 px-4 sm:px-6 lg:px-8 flex flex-col justify-between antialiased">
+      <main className="max-w-2xl w-full mx-auto space-y-6">
+        {/* Top Header */}
+        <header className="text-center space-y-2">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold uppercase tracking-wider bg-indigo-50 text-indigo-700 rounded-full border border-indigo-200/60 shadow-2xs">
+            <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+            <span>AI Document Intelligence</span>
+          </div>
 
-          {/* Form */}
-          <form onSubmit={handleSummarize} className="space-y-6">
-            
-            {/* File Input */}
-            <div className="space-y-2">
-              <label 
-                htmlFor="file-upload" 
-                className="block text-sm font-semibold text-slate-700"
-              >
-                Upload Document
-              </label>
-              <div className="relative">
-                <input
-                  id="file-upload"
-                  type="file"
-                  onChange={handleFileChange}
-                  accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
+            Document Summary Assistant
+          </h1>
+
+          <p className="text-sm text-slate-600 max-w-md mx-auto leading-relaxed">
+            Extract and summarize key takeaways from PDFs and scanned document images in seconds.
+          </p>
+        </header>
+
+        {/* Dynamic State View */}
+        {summaryResult ? (
+          /* Result View */
+          <SummaryResult result={summaryResult} onReset={handleReset} />
+        ) : (
+          /* Main Interactive Form Card */
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200/90 p-5 sm:p-8 space-y-6">
+            {/* Error Banner */}
+            {uploadError && (
+              <ErrorBanner error={uploadError} onDismiss={() => setUploadError(null)} />
+            )}
+
+            {isSummarizing ? (
+              /* Loading Component */
+              <LoadingState filename={selectedFile?.name} />
+            ) : (
+              /* Form */
+              <form onSubmit={handleSummarize} className="space-y-6">
+                {/* Drag-and-Drop Upload Zone */}
+                <UploadZone
+                  selectedFile={selectedFile}
+                  onFileSelect={(file) => {
+                    setSelectedFile(file);
+                    setUploadError(null);
+                  }}
+                  onError={setUploadError}
                   disabled={isSummarizing}
-                  className="block w-full text-sm text-slate-600 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-slate-100 file:text-slate-800 hover:file:bg-slate-200 cursor-pointer border border-slate-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all disabled:opacity-60"
                 />
-              </div>
-              <p className="text-xs text-slate-500">
-                Supported formats: <span className="font-medium text-slate-700">PDF, PNG, JPEG</span> &bull; Max file size: <span className="font-medium text-slate-700">10 MB</span>
-              </p>
 
-              {/* Selected File Details */}
-              {selectedFile && (
-                <div className="flex items-center justify-between text-xs text-slate-600 bg-slate-50 border border-slate-200/80 rounded-lg p-3 mt-2">
-                  <div className="truncate pr-2">
-                    <span className="font-semibold text-slate-700">Selected: </span>
-                    <span className="font-mono text-slate-800">{selectedFile.name}</span>
-                  </div>
-                  <span className="whitespace-nowrap font-mono text-slate-500">
-                    {(selectedFile.size / 1024).toFixed(1)} KB
-                  </span>
-                </div>
-              )}
-            </div>
+                {/* Length Preset Selector */}
+                <LengthSelector
+                  value={summaryLength}
+                  onChange={setSummaryLength}
+                  disabled={isSummarizing}
+                />
 
-            {/* Summary Length Dropdown */}
-            <div className="space-y-2">
-              <label 
-                htmlFor="summary-length" 
-                className="block text-sm font-semibold text-slate-700"
-              >
-                Summary Length
-              </label>
-              <select
-                id="summary-length"
-                value={summaryLength}
-                onChange={(e) => setSummaryLength(e.target.value as 'short' | 'medium' | 'long')}
-                disabled={isSummarizing}
-                className="block w-full rounded-lg border border-slate-200 bg-white py-2.5 px-3 text-sm text-slate-800 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-60 transition-all"
-              >
-                <option value="short">Short (Quick bullet highlights)</option>
-                <option value="medium">Medium (Balanced overview — Default)</option>
-                <option value="long">Long (Comprehensive in-depth summary)</option>
-              </select>
-            </div>
+                {/* Submit Action Button */}
+                <button
+                  id="summarize-submit-button"
+                  type="submit"
+                  disabled={isSummarizing || !selectedFile}
+                  className="w-full flex items-center justify-center gap-2 py-3.5 px-5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-semibold rounded-xl text-sm transition-all focus:ring-4 focus:ring-indigo-100 focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed shadow-sm min-h-[48px]"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  <span>Extract & Summarize Document</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </form>
+            )}
+          </div>
+        )}
+      </main>
 
-            {/* Submit Button */}
-            <button
-              id="summarize-submit-button"
-              type="submit"
-              disabled={isSummarizing || !selectedFile}
-              className="w-full flex items-center justify-center py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg text-sm transition-all focus:ring-4 focus:ring-indigo-100 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
-            >
-              {isSummarizing ? (
-                <span className="inline-flex items-center gap-2">
-                  <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
-                  </svg>
-                  Extracting text & processing...
-                </span>
-              ) : (
-                'Extract & Summarize'
-              )}
-            </button>
-          </form>
+      {/* Footer Connectivity & Health Diagnostic */}
+      <footer className="max-w-2xl w-full mx-auto mt-10 pt-6 border-t border-slate-200/80 text-xs text-slate-500 space-y-2">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-slate-600">Backend API:</span>
+            <code className="bg-slate-200/60 px-2 py-0.5 rounded text-slate-700 font-mono text-[11px]">
+              {apiUrl || '/api (proxied)'}
+            </code>
+          </div>
 
-          {/* Error Display */}
-          {uploadError && (
-            <div
-              id="upload-error-box"
-              role="alert"
-              className={`mt-6 p-4 rounded-lg border text-sm space-y-1.5 animate-fade-in ${
-                uploadError.status === 422
-                  ? 'bg-amber-50 border-amber-200 text-amber-900'
-                  : 'bg-rose-50 border-rose-200 text-rose-900'
-              }`}
-            >
-              <div className="flex items-center justify-between font-semibold">
-                <span>
-                  {uploadError.status === 422
-                    ? 'No Readable Text Found'
-                    : uploadError.status === 413
-                    ? 'File Too Large'
-                    : uploadError.status === 415
-                    ? 'Unsupported File Type'
-                    : uploadError.status === 502
-                    ? 'Summary Generation Failed'
-                    : 'Extraction Failed'}
-                </span>
-                {uploadError.status > 0 && (
-                  <span
-                    className={`text-xs px-2 py-0.5 rounded border ${
-                      uploadError.status === 422
-                        ? 'bg-amber-100 text-amber-800 border-amber-200'
-                        : 'bg-rose-100 text-rose-800 border-rose-200'
-                    }`}
-                  >
-                    HTTP {uploadError.status}
-                  </span>
-                )}
-              </div>
-              <p className="text-xs leading-relaxed">
-                {uploadError.status === 422
-                  ? "We couldn't find readable text in this file. Try a clearer scan or a different file."
-                  : uploadError.message}
-              </p>
-            </div>
-          )}
-
-          {/* Extracted Response Display */}
-          {summaryResult && (
-            <section
-              id="summary-results-container"
-              className="mt-8 pt-6 border-t border-slate-200 space-y-5"
-            >
-              <div className="flex items-center justify-between">
-                <h2 className="text-base font-bold text-slate-800">
-                  Extracted Document Text
-                </h2>
-                <div className="flex items-center gap-1.5">
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">
-                    {summaryResult.file_type}
-                  </span>
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize bg-indigo-50 text-indigo-700 border border-indigo-100">
-                    {summaryResult.length}
-                  </span>
-                </div>
-              </div>
-
-              {/* Statistics & Metadata bar */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs bg-slate-50 p-3 rounded-lg border border-slate-200/80 font-mono">
-                <div>
-                  <span className="text-slate-500 block">File Name:</span>
-                  <span className="font-semibold text-slate-800 truncate block">{summaryResult.filename}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">Word Count:</span>
-                  <span className="font-semibold text-indigo-700 text-sm block">{summaryResult.word_count} words</span>
-                </div>
-                <div className="col-span-2 sm:col-span-1">
-                  <span className="text-slate-500 block">Extraction:</span>
-                  <span className="text-emerald-700 font-semibold block">✓ Verified</span>
-                </div>
-              </div>
-
-              {/* Extracted Text / AI Summary Preview Box */}
-              <div className="space-y-1.5">
-                <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                  Summary ({summaryResult.length} length)
-                </h3>
-                <div className="p-4 bg-slate-50 rounded-lg border border-slate-200 text-slate-800 text-sm leading-relaxed whitespace-pre-wrap font-sans">
-                  {summaryResult.summary}
-                </div>
-              </div>
-
-              {/* Key Points */}
-              {summaryResult.key_points && summaryResult.key_points.length > 0 && (
-                <div className="space-y-1.5">
-                  <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                    Key Takeaways
-                  </h3>
-                  <ul className="list-disc list-inside space-y-1 text-sm text-slate-700 bg-slate-50 p-3.5 rounded-lg border border-slate-200">
-                    {summaryResult.key_points.map((point, index) => (
-                      <li key={index} className="text-slate-700">
-                        {point}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* Phase Note */}
-              <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200 text-emerald-900 text-xs flex items-start gap-2">
-                <span className="font-bold text-emerald-600">&bull;</span>
-                <p>
-                  <strong>Phase 4 Complete:</strong> AI document summarization active using Groq LLaMA 3.3. Document text parsed, OCR extracted, and structured summary generated.
-                </p>
-              </div>
-            </section>
-          )}
-
-          {/* Backend Connectivity Status Section */}
-          <footer className="mt-8 pt-6 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
-            <div className="flex items-center gap-2">
-              <span>Backend Endpoint:</span>
-              <code className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-700 font-mono">
-                {apiUrl || 'Relative (/api)'}
-              </code>
-            </div>
-
-            <button
-              id="check-health-button"
-              type="button"
-              onClick={checkBackendHealth}
-              disabled={isCheckingHealth}
-              className="text-xs font-medium text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-2.5 py-1 rounded transition-colors"
-            >
-              {isCheckingHealth ? 'Testing...' : 'Test /api/health'}
-            </button>
-          </footer>
-
-          {backendHealth && (
-            <div className="mt-2 text-center text-xs">
-              {backendHealth.status === 'ok' ? (
-                <span className="text-emerald-700 font-medium">✓ Backend online (200 OK)</span>
-              ) : (
-                <span className="text-rose-600 font-medium">✗ {backendHealth.message}</span>
-              )}
-            </div>
-          )}
-
+          <button
+            id="check-health-button"
+            type="button"
+            onClick={checkBackendHealth}
+            disabled={isCheckingHealth}
+            className="text-xs font-medium text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg transition-colors shadow-2xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            {isCheckingHealth ? 'Testing connection...' : 'Test Backend Health'}
+          </button>
         </div>
-      </div>
+
+        {backendHealth && (
+          <div className="text-center sm:text-left text-xs pt-1">
+            {backendHealth.status === 'ok' ? (
+              <span className="text-emerald-700 font-medium">✓ Backend online & ready (HTTP 200)</span>
+            ) : (
+              <span className="text-rose-600 font-medium">✗ {backendHealth.message}</span>
+            )}
+          </div>
+        )}
+      </footer>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 {
   "name": "Document Summary Assistant",
-  "description": "Phase 1 scaffold for Document Summary Assistant with FastAPI backend and React frontend.",
+  "description": "AI-powered Document Summary Assistant with drag-and-drop file upload, OCR extraction, multi-length summarization, and key takeaway generation.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
