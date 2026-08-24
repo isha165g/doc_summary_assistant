@@ -7,8 +7,8 @@
 ## 🌐 Live URLs
 
 - **Live Application (Frontend)**: `https://your-app-name.vercel.app` *(Replace with your Vercel deployment URL)*
-- **API Health Check (Backend)**: `https://your-api-name.onrender.com/api/health` *(Replace with your Render deployment URL)*
-- **API Interactive Docs (Swagger)**: `https://your-api-name.onrender.com/docs`
+- **API Health Check (Backend)**: `https://doc-summary-assistant-k00l.onrender.com/api/health`
+- **API Interactive Docs (Swagger)**: `https://doc-summary-assistant-k00l.onrender.com/docs`
 
 ---
 
