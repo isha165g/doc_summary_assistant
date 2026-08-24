@@ -330,11 +330,14 @@ async def summarize_document_stream(
                         "PDF extraction timed out after 60 seconds for %s",
                         file.filename
                     )
-                    yield f"data: {json.dumps({
-                        'stage': 'error',
-                        'status': 504,
-                        'message': 'PDF extraction took too long. Please try a smaller or simpler PDF.'
-                    })}\n\n"
+
+                    error_data = {
+                        "stage": "error",
+                        "status": 504,
+                        "message": "PDF extraction took too long. Please try a smaller or simpler PDF."
+                    }
+
+                    yield f"data: {json.dumps(error_data)}\n\n"
                     return
 
                 logger.info(
