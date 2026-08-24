@@ -1,0 +1,16 @@
+# Render Blueprint Specification for Document Summary Assistant Backend
+services:
+  - type: web
+    name: document-summary-api
+    runtime: docker
+    dockerfilePath: backend/Dockerfile
+    dockerContext: backend
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false # Set securely in Render dashboard
+      - key: ALLOWED_ORIGINS
+        sync: false # e.g. https://your-app.vercel.app
+      - key: PYTHONUNBUFFERED
+        value: "1"
