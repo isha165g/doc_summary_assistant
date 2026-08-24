@@ -316,11 +316,26 @@ async def summarize_document_stream(
                     len(content),
                 )
 
-                extracted_text = await asyncio.to_thread(
-                    extract_text,
-                    content,
-                    detected_type,
+                extraction_task = asyncio.create_task(
+                    asyncio.to_thread(extract_text, content, detected_type)
                 )
+
+                try:
+                    extracted_text = await asyncio.wait_for(
+                        extraction_task,
+                        timeout=60
+                    )
+                except asyncio.TimeoutError:
+                    logger.error(
+                        "PDF extraction timed out after 60 seconds for %s",
+                        file.filename
+                    )
+                    yield f"data: {json.dumps({
+                        'stage': 'error',
+                        'status': 504,
+                        'message': 'PDF extraction took too long. Please try a smaller or simpler PDF.'
+                    })}\n\n"
+                    return
 
                 logger.info(
                     "EXTRACTION FINISHED: file=%s words=%d",
